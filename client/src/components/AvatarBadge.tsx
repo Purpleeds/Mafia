@@ -1,5 +1,5 @@
 import type { Avatar } from "@mafia/shared";
-import { AVATAR_COLOR_HEX, AVATAR_ICON_EMOJI } from "../lib/avatars";
+import { Character } from "../art/avatar";
 
 interface AvatarBadgeProps {
   avatar: Avatar;
@@ -10,16 +10,17 @@ interface AvatarBadgeProps {
   className?: string;
 }
 
+/** A player's procedurally drawn character in a round frame. */
 export function AvatarBadge({ avatar, size = 40, label, className }: AvatarBadgeProps) {
   return (
     <span
       className={`avatar-badge${className ? ` ${className}` : ""}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.58), background: AVATAR_COLOR_HEX[avatar.color] }}
+      style={{ width: size, height: size }}
       role={label ? "img" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <span className="avatar-emoji">{AVATAR_ICON_EMOJI[avatar.icon]}</span>
+      <Character avatar={avatar} />
     </span>
   );
 }

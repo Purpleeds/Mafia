@@ -1,3 +1,4 @@
+import { Icon } from "../../art/icons";
 import { PlayerGrid } from "../../components/PlayerGrid";
 import { nightNarration } from "../../lib/copy";
 import { nameOf, type PhaseProps } from "./common";
@@ -27,7 +28,8 @@ export function DayScreen({ received }: PhaseProps) {
       {you && you.investigations.length > 0 ? (
         <section className="card" aria-label="Your investigation notes">
           <h2 className="card-title">
-            <span aria-hidden="true">🔍 </span>Your notes
+            <Icon name="search" size={20} />
+            Your notes
           </h2>
           <ul className="notes">
             {you.investigations.map((i) => (

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Icon } from "../art/icons";
 import { takeOverSession } from "../state/controller";
 import { useAppState } from "../state/store";
 
@@ -15,8 +16,8 @@ export function ReplacedOverlay() {
   return (
     <div className="overlay" role="alertdialog" aria-modal="true" aria-labelledby="replaced-title" aria-describedby="replaced-text">
       <div className="overlay-card">
-        <div className="overlay-icon" aria-hidden="true">
-          📱
+        <div className="overlay-icon">
+          <Icon name="phone" size={48} />
         </div>
         <h2 id="replaced-title">This game is open on another tab or device</h2>
         <p id="replaced-text">{replaced} You can only play from one place at a time.</p>

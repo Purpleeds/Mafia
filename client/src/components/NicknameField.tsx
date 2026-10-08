@@ -1,4 +1,5 @@
 import { NICKNAME_MAX_LENGTH, validateNickname } from "@mafia/shared";
+import { Icon } from "../art/icons";
 
 interface NicknameFieldProps {
   id: string;
@@ -37,7 +38,7 @@ export function NicknameField({ id, value, onChange, serverError, showValidation
       <div id={`${id}-hint`} className="field-hint" aria-live="polite">
         {error ? (
           <span className="field-error">
-            <span aria-hidden="true">⚠ </span>
+            <Icon name="warn" size={15} />
             {error}
           </span>
         ) : (

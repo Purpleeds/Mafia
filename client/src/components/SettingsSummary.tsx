@@ -1,4 +1,6 @@
 import { OPTIONAL_ROLES, type GameSettings } from "@mafia/shared";
+import { Icon } from "../art/icons";
+import { MODE_INFO } from "../lib/copy";
 import { TIE_RULE_LABEL, formatSeconds } from "../lib/labels";
 import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel } from "../lib/settings";
 
@@ -13,7 +15,10 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
       <dl className="summary">
         <div>
           <dt>Mode</dt>
-          <dd>{settings.contentMode === "safe" ? "🎈 Safe (family-friendly)" : "🕵️ Normal (crime drama)"}</dd>
+          <dd>
+            <Icon name={MODE_INFO[settings.contentMode].icon} size={16} />{" "}
+            {settings.contentMode === "safe" ? "Safe (family-friendly)" : "Normal (crime drama)"}
+          </dd>
         </div>
         <div>
           <dt>Mafia</dt>
@@ -30,6 +35,10 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
         <div>
           <dt>Roles on elimination</dt>
           <dd>{settings.revealRoleOnDeath ? "Revealed" : "Kept secret"}</dd>
+        </div>
+        <div>
+          <dt>Doctor saves</dt>
+          <dd>{settings.announceSaves ? "Announced (without saying who)" : "Kept secret"}</dd>
         </div>
         <div>
           <dt>Votes</dt>

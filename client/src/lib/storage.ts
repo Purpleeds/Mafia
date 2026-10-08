@@ -2,7 +2,8 @@
  * Small, failure-tolerant wrappers around localStorage. Private browsing or a
  * full quota must never break joining a game, so every access is guarded.
  */
-import { isAvatar, normalizeRoomCode, type Avatar, type SessionInfo } from "@mafia/shared";
+import { normalizeRoomCode, type Avatar, type SessionInfo } from "@mafia/shared";
+import { migrateAvatar } from "./avatars";
 
 const SESSION_PREFIX = "mafia:session:";
 const ACTIVE_KEY = "mafia:active";
@@ -80,7 +81,8 @@ export function loadProfile(): Partial<SavedProfile> {
   const v = value as Record<string, unknown>;
   const profile: Partial<SavedProfile> = {};
   if (typeof v.name === "string") profile.name = v.name;
-  if (isAvatar(v.avatar)) profile.avatar = v.avatar;
+  const avatar = migrateAvatar(v.avatar);
+  if (avatar) profile.avatar = avatar;
   return profile;
 }
 

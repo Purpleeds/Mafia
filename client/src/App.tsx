@@ -1,12 +1,13 @@
 import { useEffect } from "react";
-import type { ContentMode } from "@mafia/shared";
-import { Background } from "./components/Background";
+import type { ContentMode, Phase, Winner } from "@mafia/shared";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { ReplacedOverlay } from "./components/ReplacedOverlay";
 import { Toasts } from "./components/Toasts";
+import { Backdrop } from "./fx/Backdrop";
+import { setScene } from "./fx/scene";
 import { canonicalizeLocation, parseRoute, usePathname } from "./lib/router";
-import { HomeScreen } from "./screens/HomeScreen";
 import { HowToPlayScreen, RoleGuideScreen } from "./screens/HelpScreens";
+import { HomeScreen } from "./screens/HomeScreen";
 import { RoomRoute } from "./screens/RoomRoute";
 import { openRoom } from "./state/controller";
 import { useAppState } from "./state/store";
@@ -24,18 +25,20 @@ export function App() {
     if (roomCode) openRoom(roomCode);
   }, [roomCode]);
 
-  const mode = useAppState((s): ContentMode => {
-    const game = s.game;
-    return roomCode && game && game.payload.room.code === roomCode ? game.payload.view.settings.contentMode : "safe";
-  });
+  const view = useAppState((s) => (roomCode && s.game && s.game.payload.room.code === roomCode ? s.game.payload.view : null));
+  const mode: ContentMode = view?.settings.contentMode ?? "safe";
+  const phase: Phase | null = view?.phase ?? null;
+  const winner: Winner | null = view?.winner ?? null;
 
+  // The stylesheet and the background both follow the room's mode and phase.
   useEffect(() => {
     document.documentElement.dataset.mode = mode;
-  }, [mode]);
+    setScene({ mode, phase, winner });
+  }, [mode, phase, winner]);
 
   return (
     <>
-      <Background mode={mode} />
+      <Backdrop />
       <ConnectionBanner />
       <main className="app-main">
         {roomCode ? (

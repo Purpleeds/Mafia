@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../../art/icons";
+import { CardBackArt, ROLE_THEME, RoleCardArt } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
 import { FlipCard } from "../../components/FlipCard";
@@ -46,8 +48,16 @@ export function RoleRevealScreen({ received }: PhaseProps) {
     );
   }
 
-  const info = ROLE_INFO[you.role];
+  const role = you.role;
+  const info = ROLE_INFO[role];
+  const theme = ROLE_THEME[role];
   const teammates = you.teammateIds.map((id) => view.players.find((p) => p.id === id)).filter((p) => !!p);
+  // Ink for the words printed on the card's paper.
+  const ink = mode === "normal" ? "#f3e3c3" : theme.dark;
+  const tag =
+    mode === "normal"
+      ? { color: "#c9a45a", boxShadow: "inset 0 0 0 1.5px #c9a45a" }
+      : { color: "#ffffff", background: theme.main };
 
   return (
     <div className="reveal stack">
@@ -56,48 +66,63 @@ export function RoleRevealScreen({ received }: PhaseProps) {
         onToggle={() => setFaceUp((v) => !v)}
         front={
           <>
-            <span className="flip-emblem" aria-hidden="true">
-              ?
+            <CardBackArt mode={mode} className="flip-art" />
+            <span className="flip-caption">
+              <span className="flip-title">Tap to see your role</span>
+              <span className="flip-sub">Make sure nobody is peeking!</span>
             </span>
-            <span className="flip-title">Tap to see your role</span>
-            <span className="flip-sub">Make sure nobody is peeking!</span>
           </>
         }
         back={
           <>
-            <span className="flip-emblem" aria-hidden="true">
-              {info.emoji}
-            </span>
-            <span className="flip-role">{ROLE_LABEL[you.role]}</span>
-            <span className="tag">{TEAM_LABEL[info.team]}</span>
-            <span className="flip-text">{info.summary[mode]}</span>
-            <span className="flip-text">
-              <strong>Power:</strong> {info.ability[mode]}
-            </span>
-            <span className="flip-text">
-              <strong>Your goal:</strong> {info.goal}
-            </span>
-            {teammates.length > 0 ? (
-              <span className="flip-team">
-                <strong>Your team:</strong>{" "}
-                {teammates.map((t) => (
-                  <span key={t.id} className="flip-teammate">
-                    <AvatarBadge avatar={t.avatar} size={22} /> {nameOf(view, t.id)}
-                  </span>
-                ))}
+            <RoleCardArt role={role} mode={mode} name={ROLE_LABEL[role]} className="flip-art" />
+            <span className="flip-caption" style={{ color: ink }}>
+              <span className="flip-team-tag" style={tag}>
+                {TEAM_LABEL[info.team]}
               </span>
-            ) : null}
-            <span className="flip-sub">Tap to hide</span>
+              <span className="flip-summary">{info.summary[mode]}</span>
+              <span className="flip-sub">Tap to hide</span>
+            </span>
           </>
         }
       />
       <p className="sr-only" role="status">
-        {faceUp ? `Your role is ${ROLE_LABEL[you.role]}. ${info.summary[mode]}` : "Your role is hidden."}
+        {faceUp ? `Your role is ${ROLE_LABEL[role]}. ${info.summary[mode]}` : "Your role is hidden."}
       </p>
+
+      {faceUp ? (
+        <section className="card role-details" aria-label="About your role">
+          <dl>
+            <div>
+              <dt>Your power</dt>
+              <dd>{info.ability[mode]}</dd>
+            </div>
+            <div>
+              <dt>Your goal</dt>
+              <dd>{info.goal}</dd>
+            </div>
+            {teammates.length > 0 ? (
+              <div>
+                <dt>Your team</dt>
+                <dd className="flip-team">
+                  {teammates.map((t) => (
+                    <span key={t.id} className="flip-teammate">
+                      <AvatarBadge avatar={t.avatar} size={26} /> {nameOf(view, t.id)}
+                    </span>
+                  ))}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+      ) : (
+        <p className="field-hint role-details-hidden">Your power and goal show here while the card is face up.</p>
+      )}
 
       {me.done ? (
         <p className="card-lead center-text" role="status">
-          <span aria-hidden="true">✓ </span>You're ready. Waiting for everyone ({ready}/{players.length})…
+          <Icon name="check" size={20} />
+          You're ready. Waiting for everyone ({ready}/{players.length})…
         </p>
       ) : (
         <button
@@ -118,7 +143,17 @@ export function RoleRevealScreen({ received }: PhaseProps) {
         <h2 className="card-title">
           Ready: {ready}/{players.length}
         </h2>
-        <PlayerGrid players={view.players} youId={you.id} label="Players" badges={Object.fromEntries(players.filter((p) => p.done).map((p) => [p.id, <span key={p.id} className="vote-badge">✓</span>]))} />
+        <PlayerGrid players={view.players} youId={you.id} label="Players" badges={Object.fromEntries(
+            players
+              .filter((p) => p.done)
+              .map((p) => [
+                p.id,
+                <span key={p.id} className="vote-badge ready-badge" title="Ready">
+                  <Icon name="check" size={16} />
+                </span>,
+              ]),
+          )}
+        />
       </section>
     </div>
   );

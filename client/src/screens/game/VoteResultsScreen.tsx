@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { SKIP } from "@mafia/shared";
+import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { Typewriter } from "../../components/Typewriter";
 import { voteNarration } from "../../lib/copy";
+import { DeathCards } from "./DeathCards";
 import { nameOf, typingSpeed, type PhaseProps } from "./common";
-import { DeathCards } from "./NightResultsScreen";
 
 export function VoteResultsScreen({ received }: PhaseProps) {
   const { view } = received.payload;
@@ -25,13 +26,14 @@ export function VoteResultsScreen({ received }: PhaseProps) {
     <div className="stack">
       <section className="card narrator" aria-label="The narrator">
         <p className="eyebrow">
-          <span aria-hidden="true">🎙 </span>The narrator
+          <Icon name="mic" size={15} />
+          The narrator
         </p>
         <Typewriter text={text} speed={speed} onDone={() => setDone(true)} />
       </section>
       {done && report ? (
         <>
-          <DeathCards deaths={report.deaths} view={view} />
+          <DeathCards deaths={report.deaths} view={view} moment={`vote:${view.round}:${view.phaseEndsAt ?? ""}`} />
           <section className="card" aria-label="Vote counts">
             <h2 className="card-title">The vote</h2>
             <ul className="tally">

@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { MAX_PLAYERS, MIN_PLAYERS } from "@mafia/shared";
+import { Icon } from "../art/icons";
+import { ErrorText } from "../components/ErrorText";
 import { HelpSheet } from "../components/HelpSheet";
 import { InviteCard } from "../components/InviteCard";
 import { LeaveRoomButton } from "../components/LeaveRoomButton";
@@ -8,7 +10,6 @@ import { ProfileEditor } from "../components/ProfileEditor";
 import { RoomHeader } from "../components/RoomHeader";
 import { PasswordEditor, SettingsEditor } from "../components/SettingsEditor";
 import { SettingsSummary } from "../components/SettingsSummary";
-import { ErrorText } from "../components/ErrorText";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import type { ReceivedState } from "../state/store";
@@ -37,7 +38,8 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
 
       {you?.isSpectator ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">👀 </span>The room is full, so you're watching. You'll get a seat when one frees up.
+          <Icon name="eye" />
+          The room is full, so you're watching. You'll get a seat when one frees up.
         </p>
       ) : null}
 
@@ -73,7 +75,7 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
           <Block order={5}>
             {you ? (
               <ProfileEditor
-                key={`${you.name}|${you.avatar.color}|${you.avatar.icon}`}
+                key={`${you.name}|${you.avatar.color}|${you.avatar.seed}`}
                 name={you.name}
                 avatar={you.avatar}
               />

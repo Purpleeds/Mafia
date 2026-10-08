@@ -1,5 +1,8 @@
-import { AVATAR_COLORS, AVATAR_ICONS, type Avatar } from "@mafia/shared";
-import { AVATAR_COLOR_HEX, AVATAR_ICON_EMOJI, avatarLabel, colorLabel, iconLabel, randomAvatar } from "../lib/avatars";
+import { useState } from "react";
+import { AVATAR_COLORS, type Avatar } from "@mafia/shared";
+import { Icon } from "../art/icons";
+import { randomSeed } from "../art/rng";
+import { AVATAR_COLOR_HEX, avatarLabel, colorLabel, randomAvatar } from "../lib/avatars";
 import { AvatarBadge } from "./AvatarBadge";
 
 interface AvatarPickerProps {
@@ -8,16 +11,60 @@ interface AvatarPickerProps {
   idPrefix: string;
 }
 
+const CHOICES = 8;
+
+function freshLooks(keep: string): string[] {
+  return [keep, ...Array.from({ length: CHOICES - 1 }, randomSeed)];
+}
+
+/** Pick a look (characters generated from seeds) and a colour. */
 export function AvatarPicker({ value, onChange, idPrefix }: AvatarPickerProps) {
+  const [looks, setLooks] = useState<string[]>(() => freshLooks(value.seed));
+  const shownLooks = looks.includes(value.seed) ? looks : [value.seed, ...looks.slice(1)];
+
   return (
     <fieldset className="avatar-picker">
       <legend>Avatar</legend>
       <div className="avatar-preview">
-        <AvatarBadge avatar={value} size={64} label={`Your avatar: ${avatarLabel(value)}`} />
-        <button type="button" className="btn btn-ghost" onClick={() => onChange(randomAvatar())}>
-          🎲 Surprise me
+        <AvatarBadge avatar={value} size={76} label={`Your avatar: ${avatarLabel(value)}`} />
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => {
+            const next = randomAvatar();
+            setLooks(freshLooks(next.seed));
+            onChange(next);
+          }}
+        >
+          <Icon name="dice" /> Surprise me
         </button>
       </div>
+
+      <div className="picker-label" id={`${idPrefix}-looks`}>
+        Look
+      </div>
+      <div className="look-grid" role="radiogroup" aria-labelledby={`${idPrefix}-looks`}>
+        {shownLooks.map((seed, i) => {
+          const selected = value.seed === seed;
+          const candidate = { color: value.color, seed };
+          return (
+            <button
+              key={`${seed}-${i}`}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={`Look ${i + 1}: ${avatarLabel(candidate)}`}
+              className={`look-choice${selected ? " is-selected" : ""}`}
+              onClick={() => onChange(candidate)}
+            >
+              <AvatarBadge avatar={candidate} size={54} />
+            </button>
+          );
+        })}
+      </div>
+      <button type="button" className="btn btn-small btn-ghost more-looks" onClick={() => setLooks(freshLooks(value.seed))}>
+        <Icon name="dice" size={16} /> More looks
+      </button>
 
       <div className="picker-label" id={`${idPrefix}-colors`}>
         Colour
@@ -37,31 +84,7 @@ export function AvatarPicker({ value, onChange, idPrefix }: AvatarPickerProps) {
               style={{ background: AVATAR_COLOR_HEX[color] }}
               onClick={() => onChange({ ...value, color })}
             >
-              {selected ? <span aria-hidden="true">✓</span> : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="picker-label" id={`${idPrefix}-icons`}>
-        Icon
-      </div>
-      <div className="icon-grid" role="radiogroup" aria-labelledby={`${idPrefix}-icons`}>
-        {AVATAR_ICONS.map((icon) => {
-          const selected = value.icon === icon;
-          return (
-            <button
-              key={icon}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              aria-label={iconLabel(icon)}
-              title={iconLabel(icon)}
-              className={`icon-choice${selected ? " is-selected" : ""}`}
-              style={selected ? { background: AVATAR_COLOR_HEX[value.color] } : undefined}
-              onClick={() => onChange({ ...value, icon })}
-            >
-              <span aria-hidden="true">{AVATAR_ICON_EMOJI[icon]}</span>
+              {selected ? <Icon name="check" size={18} /> : null}
             </button>
           );
         })}

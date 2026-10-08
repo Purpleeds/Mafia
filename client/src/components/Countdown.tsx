@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../art/icons";
 
 interface CountdownProps {
   /** Server epoch ms when the phase ends (view.phaseEndsAt). */
@@ -34,7 +35,7 @@ export function Countdown({ endsAt, serverNow, receivedAt, className }: Countdow
       role="timer"
       aria-label={`${seconds} seconds left`}
     >
-      <span aria-hidden="true">⏱ </span>
+      <Icon name="timer" size={16} className="countdown-icon" />
       {text}
     </span>
   );

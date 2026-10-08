@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "../art/icons";
 import { ChatPanel } from "../components/ChatPanel";
 import { GameTopBar } from "../components/GameTopBar";
 import { HelpSheet } from "../components/HelpSheet";
@@ -30,6 +31,14 @@ export function GameScreen({ received }: { received: ReceivedState }) {
       delete document.documentElement.dataset.phase;
     };
   }, [view.phase]);
+
+  // Who just left the game, so their row fades out during the announcement.
+  const fadingIds =
+    view.phase === "NIGHT_RESULTS"
+      ? (view.nightReport?.deaths.map((d) => d.playerId) ?? [])
+      : view.phase === "VOTE_RESULTS"
+        ? (view.voteReport?.deaths.map((d) => d.playerId) ?? [])
+        : [];
 
   const chatPhase = ["NIGHT_RESULTS", "DAY_DISCUSSION", "VOTING", "VOTE_RESULTS", "GAME_OVER"].includes(view.phase);
   const graveyardNight = view.phase === "NIGHT" && (watching || out);
@@ -65,18 +74,20 @@ export function GameScreen({ received }: { received: ReceivedState }) {
 
       {watching ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">👀 </span>You're watching. You'll join the next game.
+          <Icon name="eye" />
+          You're watching. You'll join the next game.
         </p>
       ) : null}
       {out && view.phase !== "GAME_OVER" ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">✝ </span>You've been eliminated. You can watch and use the graveyard chat, but you
+          <Icon name="grave" />
+          You've been eliminated. You can watch and use the graveyard chat, but you
           can't talk to the living or vote.
         </p>
       ) : null}
       {you?.loverIds && view.phase !== "GAME_OVER" ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">💘 </span>
+          <Icon name="heart" />
           {you.loverIds.includes(you.id)
             ? `You and ${nameOf(view, you.loverIds.find((id) => id !== you.id) ?? "")} are lovers. If one goes, so does the other.`
             : `You linked ${nameOf(view, you.loverIds[0])} and ${nameOf(view, you.loverIds[1])}.`}
@@ -92,7 +103,13 @@ export function GameScreen({ received }: { received: ReceivedState }) {
               <h2 id="game-players-title" className="card-title">
                 Players
               </h2>
-              <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={you?.isHost === true} phase={view.phase} />
+              <PlayerList
+                players={view.players}
+                youId={you?.id ?? null}
+                viewerIsHost={you?.isHost === true}
+                phase={view.phase}
+                fadingIds={fadingIds}
+              />
             </section>
             <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={you?.isHost === true} />
           </aside>

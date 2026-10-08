@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ChatView } from "../../components/ChatView";
 import { ErrorText } from "../../components/ErrorText";
@@ -27,22 +28,10 @@ export function NightScreen({ received }: PhaseProps) {
   return <NightPlay key={view.round} received={received} />;
 }
 
-function NightSky() {
-  return (
-    <div className="night-sky" aria-hidden="true">
-      <span className="moon">🌙</span>
-      <span className="star s1">✦</span>
-      <span className="star s2">✦</span>
-      <span className="star s3">✦</span>
-    </div>
-  );
-}
-
 function NightWatching({ received }: PhaseProps) {
   const { view } = received.payload;
   return (
     <div className="night stack">
-      <NightSky />
       <section className="card center-block">
         <h2 className="card-title">The town sleeps</h2>
         <p className="field-hint">
@@ -124,7 +113,7 @@ function NightPlay({ received }: PhaseProps) {
   }
 
   const buttonLabel = locked
-    ? "Locked in ✓ (tap a player to change)"
+    ? "Locked in (tap a player to change)"
     : picked.length === need
       ? `${NIGHT_VERB[mode][kind]} ${pickedNames}`
       : need === 2
@@ -133,8 +122,8 @@ function NightPlay({ received }: PhaseProps) {
 
   return (
     <div className="night stack">
-      <NightSky />
       <p className="sleep-line" role="status">
+        <Icon name="moon" size={20} className="sleep-moon" />
         Sleeping{" "}
         <span className="zzz" aria-hidden="true">
           z z z
@@ -158,6 +147,7 @@ function NightPlay({ received }: PhaseProps) {
           disabled={picked.length !== need || action.pending || fakePending || locked}
           onClick={confirm}
         >
+          {locked ? <Icon name="check" /> : null}
           {action.pending || fakePending ? "Locking in…" : buttonLabel}
         </button>
         <ErrorText error={action.error} />
@@ -190,7 +180,8 @@ function Whisper({ view, real }: { view: NonNullable<PhaseProps["received"]["pay
   return (
     <div className="whisper">
       <button type="button" className="btn btn-block" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        <span aria-hidden="true">🤫 </span>Whisper
+        <Icon name="whisper" />
+        Whisper
       </button>
       {open ? (
         <ChatView

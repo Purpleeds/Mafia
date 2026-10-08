@@ -55,7 +55,7 @@ function ProfileForm({
     if (!check.ok) return;
     const patch: UpdateProfilePayload = {};
     if (check.value !== initialName) patch.name = check.value;
-    if (avatar.color !== initialAvatar.color || avatar.icon !== initialAvatar.icon) patch.avatar = avatar;
+    if (avatar.color !== initialAvatar.color || avatar.seed !== initialAvatar.seed) patch.avatar = avatar;
     if (patch.name === undefined && patch.avatar === undefined) {
       onDone();
       return;

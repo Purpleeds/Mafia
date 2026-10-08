@@ -8,6 +8,8 @@ Online multiplayer Mafia / Werewolf with an automatic narrator. TypeScript monor
   - `rooms/` – `RoomService` (runs the engine per room, timers, chat, clean-up) over a `RoomStore` interface (`MemoryRoomStore` today)
   - `socket/` – event handlers, payload validation, rate limiting, reconnect handling
 - `client/` – Vite + React
+  - `art/` – all the artwork, drawn in code as SVG: role cards, icons, the logo and the players' characters
+  - `fx/` – the animated background (raw WebGL fragment shader) and its static fallback
 
 The server is the single source of truth. Each player is sent only their own view of the game (`game:state`) through a private
 Socket.IO room, so hidden information (other players' roles, night choices, detective results, Mafia chat) never reaches a browser
@@ -18,7 +20,7 @@ that shouldn't have it.
 ```bash
 npm install
 npm run dev      # server on :3000, Vite dev server on :5173 (open this one)
-npm test         # engine, room service and socket integration tests
+npm test         # engine, room service and socket integration tests, then the client's art and effects tests
 ```
 
 Production-style, on one port:
@@ -41,12 +43,39 @@ At night every player sees the same screen: players with a night power use it fo
 sends nothing to the server, so a glance at someone's phone tells you nothing about their role. The host can hide *who* voted for
 whom (counts stay visible) with the "Show who voted for whom" setting.
 
+## Look and feel
+
+All art is original and made in code: no image files, no icon fonts, no emoji.
+
+- **Background** (`client/src/fx`): one full-screen WebGL 1 fragment shader draws a cartoon village in a valley: sky, sun and
+  moon crossing the sky, twinkling stars, drifting clouds, mist between the hills, the village and the meadow (noise), window
+  lights that come on at night, a turning windmill, vignette and film grain. The village's three depth layers are SVG paths
+  generated in `village.ts`; for WebGL they're drawn once into two textures (one colour channel per layer) so the mist can sit
+  between them and the layers shift for parallax.
+- **Day and night follow the game**: lobby afternoon, dusk at the role reveal, midnight at night, dawn for the morning news, a
+  sunset for the vote results. Changes animate the sun or moon across the sky (`timeOfDay.ts`). Safe Mode is bright storybook;
+  Normal Mode is darker and noir, with a crescent moon, heavier mist, more grain and a stronger vignette (`palette.ts`).
+- **Moments**: an elimination is a soft puff of smoke with the player's card floating away (Safe) or a red pulse and shock ring
+  (Normal); a Doctor's save is a soft green glow in both modes. The background joins in through `emitFx`. The host can turn
+  off save announcements ("Announce the Doctor's saves"); the morning news never says who was saved, only the Doctor learns that.
+- **Performance**: Auto picks a tier from a quick probe (WebGL and high-precision support, software rendering, Data Saver, GPU,
+  memory, phone or computer): *high* (all effects, ≤ 2.2 MP per frame), *standard* (no clouds, ≤ 1 MP; phones), *lite*
+  (simpler mist, no glow, smaller textures, ≤ 0.45 MP) or *static* (a CSS + SVG picture, no WebGL). It renders about 30 fps
+  when the scene is calm and 60 during transitions, stops completely while the tab is hidden, and steps down a tier (remembered
+  on the device) if frames come in slow. Reduced-motion users get the scene redrawn only when the phase changes. Players can pick
+  Auto / Full / Lite / Off under Display in the help dialog or on the How to play page; `?fx=full|lite|off` forces one for a
+  page load (handy for testing). `window.__mafiaFx` shows the current tier and frame rate.
+- **Cards and animation**: role cards are SVG (each role has its own icon, colour and border ornaments) with a 3D flip; votes
+  drop onto player cards; eliminated players fade; the game-over roles flip in. Fonts: Fraunces (titles; rounder in Safe
+  Mode via its SOFT axis) and Nunito (UI), from Google Fonts.
+
 ## Rooms and joining
 
 - Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.
   Hosts may pick a custom code of 4–8 letters/numbers instead (rude and reserved words are refused).
 - Every room has a join link, `https://<site>/ABCD`, which opens straight on the nickname screen; the lobby shows it as a QR code.
-- Nicknames: unique in the room, up to 16 characters, letters/numbers/spaces/basic punctuation, no rude words. Plus an avatar colour and icon.
+- Nicknames: unique in the room, up to 16 characters, letters/numbers/spaces/basic punctuation, no rude words. Plus an avatar:
+  a colour and a seed (8 letters/digits) that always draws the same little character (face, hair, hat, extras).
 - Optional room password (stored as a salted scrypt hash). The host can set or remove it in the lobby.
 - People joining after the game has started become spectators: they watch, can chat with eliminated players, and become players
   at the next game.

@@ -18,10 +18,10 @@ export const TIMER_LABEL: Record<keyof TimerSettings, string> = {
   voteResultsSeconds: "Vote results",
 };
 
-export const OPTIONAL_ROLE_INFO: Record<OptionalRole, { label: string; emoji: string; description: string }> = {
-  jester: { label: "Jester", emoji: "🃏", description: "Wins by getting voted out." },
-  bodyguard: { label: "Bodyguard", emoji: "🛡️", description: "Guards someone each night." },
-  cupid: { label: "Cupid", emoji: "💘", description: "Links two lovers on the first night." },
+export const OPTIONAL_ROLE_INFO: Record<OptionalRole, { label: string; description: string }> = {
+  jester: { label: "Jester", description: "Wins by getting voted out." },
+  bodyguard: { label: "Bodyguard", description: "Guards someone each night." },
+  cupid: { label: "Cupid", description: "Links two lovers on the first night." },
 };
 
 /** Choices for a timer select: nice steps between the limits, always including the current value. */

@@ -1,7 +1,6 @@
 import type { ContentMode, Role, Team } from "@mafia/shared";
 
 export interface RoleInfo {
-  emoji: string;
   team: Team;
   /** Needs switching on by the host. */
   optional: boolean;
@@ -22,7 +21,6 @@ export const TEAM_LABEL: Record<Team, string> = {
 
 export const ROLE_INFO: Record<Role, RoleInfo> = {
   mafia: {
-    emoji: "🕶️",
     team: "mafia",
     optional: false,
     summary: {
@@ -37,7 +35,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "Blend in during the day. Accuse someone, but don't be too loud.",
   },
   doctor: {
-    emoji: "🩺",
     team: "town",
     optional: false,
     summary: {
@@ -52,7 +49,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "If nobody dies in the morning, you may have saved someone, but keep it secret!",
   },
   detective: {
-    emoji: "🔍",
     team: "town",
     optional: false,
     summary: {
@@ -67,7 +63,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "Share what you know carefully. The Mafia will want you gone.",
   },
   villager: {
-    emoji: "🏡",
     team: "town",
     optional: false,
     summary: {
@@ -82,7 +77,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "Listen for stories that don't add up.",
   },
   jester: {
-    emoji: "🃏",
     team: "neutral",
     optional: true,
     summary: {
@@ -97,7 +91,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "Be suspicious, but not so obvious that nobody believes you.",
   },
   bodyguard: {
-    emoji: "🛡️",
     team: "town",
     optional: true,
     summary: {
@@ -112,7 +105,6 @@ export const ROLE_INFO: Record<Role, RoleInfo> = {
     tip: "Guard whoever the Mafia would want most, like a loud detective-looking friend.",
   },
   cupid: {
-    emoji: "💘",
     team: "town",
     optional: true,
     summary: {

@@ -4,6 +4,8 @@ import { App } from "./App";
 import { initConnection } from "./state/controller";
 import "./styles.css";
 import "./game.css";
+import "./theme.css";
+import "./fx/backdrop.css";
 
 initConnection();
 

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { ContentMode } from "@mafia/shared";
+import { Icon } from "../art/icons";
 import { goHome } from "../lib/router";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { ModeBadge } from "./ModeBadge";
@@ -22,12 +23,12 @@ export function RoomHeader({
     <header className={`room-header${large ? " is-large" : ""}`}>
       <div className="room-header-top">
         <button type="button" className="btn btn-ghost btn-small" onClick={() => goHome()} aria-label="Home">
-          <span aria-hidden="true">←</span>
+          <Icon name="back" size={20} />
         </button>
         <p className="eyebrow">Room code</p>
         {hasPassword ? (
           <span className="tag" title="Private room">
-            <span aria-hidden="true">🔒 </span>Private
+            <Icon name="lock" size={14} />Private
           </span>
         ) : (
           <span className="room-header-spacer" />

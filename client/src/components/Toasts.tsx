@@ -1,3 +1,4 @@
+import { Icon } from "../art/icons";
 import { dismissToast, useAppState } from "../state/store";
 
 export function Toasts() {
@@ -8,7 +9,7 @@ export function Toasts() {
         <div key={toast.id} className="toast">
           <span>{toast.text}</span>
           <button type="button" className="toast-close" aria-label="Dismiss" onClick={() => dismissToast(toast.id)}>
-            ✕
+            <Icon name="close" />
           </button>
         </div>
       ))}

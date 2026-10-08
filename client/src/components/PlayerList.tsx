@@ -1,12 +1,13 @@
 import type { ConnectionStatus, Phase, PublicPlayerView, SpectatorView } from "@mafia/shared";
-import { CONNECTION_ICON, CONNECTION_LABEL, ROLE_LABEL } from "../lib/labels";
+import { Icon } from "../art/icons";
+import { CONNECTION_LABEL, ROLE_LABEL } from "../lib/labels";
 import { AvatarBadge } from "./AvatarBadge";
 import { PlayerMenu } from "./PlayerMenu";
 
 function ConnectionTag({ status }: { status: ConnectionStatus }) {
   return (
     <span className={`tag conn conn-${status}`}>
-      <span aria-hidden="true">{CONNECTION_ICON[status]} </span>
+      <span className={`conn-dot conn-dot-${status}`} aria-hidden="true" />
       {CONNECTION_LABEL[status]}
     </span>
   );
@@ -18,6 +19,8 @@ interface PlayerListProps {
   /** The viewer is the host (shows per-player actions). */
   viewerIsHost: boolean;
   phase: Phase;
+  /** Players who just left the game: they fade out. */
+  fadingIds?: readonly string[];
 }
 
 function doneLabel(phase: Phase): string | null {
@@ -26,7 +29,7 @@ function doneLabel(phase: Phase): string | null {
   return null;
 }
 
-export function PlayerList({ players, youId, viewerIsHost, phase }: PlayerListProps) {
+export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = [] }: PlayerListProps) {
   const inGame = phase !== "LOBBY";
   const done = doneLabel(phase);
   return (
@@ -35,7 +38,10 @@ export function PlayerList({ players, youId, viewerIsHost, phase }: PlayerListPr
         const isYou = p.id === youId;
         const out = inGame && (!p.alive || p.kicked);
         return (
-          <li key={p.id} className={`player-row${out ? " is-out" : ""}${isYou ? " is-you" : ""}`}>
+          <li
+            key={p.id}
+            className={`player-row${out ? " is-out" : ""}${out && fadingIds.includes(p.id) ? " is-fading" : ""}${isYou ? " is-you" : ""}`}
+          >
             <AvatarBadge avatar={p.avatar} size={44} />
             <div className="player-info">
               <div className="player-name">
@@ -43,7 +49,8 @@ export function PlayerList({ players, youId, viewerIsHost, phase }: PlayerListPr
                 {isYou ? <span className="you-tag"> (you)</span> : null}
                 {p.isHost ? (
                   <span className="host-tag" title="Host">
-                    <span aria-hidden="true"> 👑</span>
+                    {" "}
+                    <Icon name="crown" size={15} className="host-crown" />
                     <span className="sr-only"> host</span>
                   </span>
                 ) : null}
@@ -57,14 +64,15 @@ export function PlayerList({ players, youId, viewerIsHost, phase }: PlayerListPr
                     <span className="tag">Alive</span>
                   ) : (
                     <span className="tag tag-out">
-                      <span aria-hidden="true">✝ </span>Eliminated
+                      <Icon name="grave" size={13} />
+                      Eliminated
                     </span>
                   )
                 ) : null}
                 {p.role ? <span className="tag tag-role">{ROLE_LABEL[p.role]}</span> : null}
                 {done && p.done && p.alive && !p.kicked ? (
                   <span className="tag tag-done">
-                    <span aria-hidden="true">✓ </span>
+                    <Icon name="check" size={13} />
                     {done}
                   </span>
                 ) : null}

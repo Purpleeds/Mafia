@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { SKIP } from "@mafia/shared";
+import { SKIP, type Avatar } from "@mafia/shared";
+import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
 import { PlayerGrid } from "../../components/PlayerGrid";
@@ -7,12 +8,13 @@ import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { myPlayer, nameOf, type PhaseProps } from "./common";
 
-function VoteBadge({ count, voters }: { count: number; voters: { id: string; name: string; avatar: import("@mafia/shared").Avatar }[] }) {
+/** A player's vote count. Keyed by the count, so each new vote lands with a little bounce. */
+function VoteBadge({ count, voters }: { count: number; voters: { id: string; name: string; avatar: Avatar }[] }) {
   if (count === 0) return null;
   return (
     <span className="vote-badge-group">
-      <span className="vote-count" aria-label={`${count} ${count === 1 ? "vote" : "votes"}`}>
-        <span aria-hidden="true">🗳 </span>
+      <span key={count} className="vote-count" aria-label={`${count} ${count === 1 ? "vote" : "votes"}`}>
+        <Icon name="ballot" size={13} />
         {count}
       </span>
       {voters.length > 0 ? (
@@ -69,14 +71,12 @@ export function VotingScreen({ received }: PhaseProps) {
       <span className="pcard-badges">
         <VoteBadge count={tally[SKIP] ?? 0} voters={votersOf(SKIP)} />
       </span>
-      <span className="skip-emoji" aria-hidden="true">
-        ⏭
-      </span>
+      <Icon name="skip" size={34} className="skip-icon" />
       <span className="pcard-name">Skip</span>
       <span className="pcard-caption">Nobody goes this round</span>
       {skipSelected ? (
         <span className="pcard-check" aria-hidden="true">
-          ✓
+          <Icon name="check" size={14} />
         </span>
       ) : null}
     </button>
@@ -88,7 +88,8 @@ export function VotingScreen({ received }: PhaseProps) {
     <div className="stack">
       {voting.round === 2 ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">⚖️ </span>It was a tie between {tied.join(" and ")}. Vote again!
+          <Icon name="scales" />
+          It was a tie between {tied.join(" and ")}. Vote again!
         </p>
       ) : null}
       <section className="card">

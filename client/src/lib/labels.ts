@@ -38,12 +38,6 @@ export const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   offline: "Offline",
 };
 
-export const CONNECTION_ICON: Record<ConnectionStatus, string> = {
-  online: "●",
-  reconnecting: "◐",
-  offline: "○",
-};
-
 export function formatSeconds(totalSeconds: number): string {
   const s = Math.max(0, Math.round(totalSeconds));
   if (s < 60) return `${s}s`;
@@ -51,8 +45,6 @@ export function formatSeconds(totalSeconds: number): string {
   const rest = s % 60;
   return rest === 0 ? `${m} min` : `${m}:${String(rest).padStart(2, "0")}`;
 }
-
-export const WINNER_EMOJI: Record<Winner, string> = { town: "🏡", mafia: "🕶️", jester: "🃏" };
 
 /** Words used in the game-over timeline. */
 export const NIGHT_OUTCOME_LABEL = {

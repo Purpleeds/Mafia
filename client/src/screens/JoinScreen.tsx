@@ -6,6 +6,7 @@ import {
   type JoinRoomPayload,
   type RoomPreview,
 } from "@mafia/shared";
+import { Icon } from "../art/icons";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { ErrorText } from "../components/ErrorText";
 import { NicknameField } from "../components/NicknameField";
@@ -82,7 +83,8 @@ function BackHome() {
   return (
     <nav className="top-nav">
       <button type="button" className="btn btn-ghost btn-small" onClick={() => goHome()}>
-        <span aria-hidden="true">← </span>Home
+        <Icon name="back" />
+        Home
       </button>
     </nav>
   );
@@ -167,7 +169,8 @@ function JoinForm({ preview, onRefresh }: { preview: RoomPreview; onRefresh: () 
         <p className="room-meta">
           {preview.hasPassword ? (
             <span className="tag">
-              <span aria-hidden="true">🔒 </span>Private room
+              <Icon name="lock" size={14} />
+              Private room
             </span>
           ) : null}
           <span className="tag">
@@ -188,7 +191,7 @@ function JoinForm({ preview, onRefresh }: { preview: RoomPreview; onRefresh: () 
         <section className="card">
           {spectator ? (
             <p className="info-banner">
-              <span aria-hidden="true">👀 </span>A game is in progress – you'll watch and join the next round.
+              <Icon name="eye" />A game is in progress – you'll watch and join the next round.
             </p>
           ) : null}
           <form className="stack" onSubmit={(e) => void submit(e)} noValidate>

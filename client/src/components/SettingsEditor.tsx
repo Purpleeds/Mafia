@@ -11,15 +11,17 @@ import {
   type SettingsPatch,
   type TimerSettings,
 } from "@mafia/shared";
+import { Icon, type IconName } from "../art/icons";
+import { RoleIcon } from "../art/roles";
 import { TIE_RULE_LABEL, formatSeconds } from "../lib/labels";
 import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel, timerOptions } from "../lib/settings";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import { ErrorText } from "./ErrorText";
 
-const MODE_INFO: Record<ContentMode, { label: string; emoji: string; description: string }> = {
-  safe: { label: "Safe", emoji: "🎈", description: "Family-friendly and cartoony. Nobody gets hurt, they just go home." },
-  normal: { label: "Normal", emoji: "🕵️", description: "Classic crime drama with darker narration." },
+const MODE_INFO: Record<ContentMode, { label: string; icon: IconName; description: string }> = {
+  safe: { label: "Safe", icon: "sun", description: "Family-friendly and cartoony. Nobody gets hurt, they just go home." },
+  normal: { label: "Normal", icon: "moon", description: "Classic crime drama with darker narration." },
 };
 
 function rolePatch(role: OptionalRole, on: boolean): Partial<Record<OptionalRole, boolean>> {
@@ -68,9 +70,7 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
                 aria-pressed={settings.contentMode === mode}
                 onClick={() => settings.contentMode !== mode && send({ contentMode: mode })}
               >
-                <span className="segment-emoji" aria-hidden="true">
-                  {MODE_INFO[mode].emoji}
-                </span>
+                <Icon name={MODE_INFO[mode].icon} size={26} className="segment-icon" />
                 <span>{MODE_INFO[mode].label}</span>
               </button>
             ))}
@@ -108,8 +108,8 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
             return (
               <label key={role} htmlFor={id} className="switch-row">
                 <span className="switch-text">
-                  <span>
-                    <span aria-hidden="true">{info.emoji} </span>
+                  <span className="switch-label">
+                    <RoleIcon role={role} size={26} />
                     {info.label}
                   </span>
                   <span className="field-hint">{info.description}</span>
@@ -156,6 +156,21 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
             className="switch"
             checked={settings.revealRoleOnDeath}
             onChange={(e) => send({ revealRoleOnDeath: e.target.checked })}
+          />
+        </label>
+
+        <label htmlFor="setting-announce-saves" className="switch-row">
+          <span className="switch-text">
+            <span>Announce the Doctor's saves</span>
+            <span className="field-hint">The morning news says when someone was saved, but never who.</span>
+          </span>
+          <input
+            id="setting-announce-saves"
+            type="checkbox"
+            role="switch"
+            className="switch"
+            checked={settings.announceSaves}
+            onChange={(e) => send({ announceSaves: e.target.checked })}
           />
         </label>
 
@@ -232,7 +247,7 @@ export function PasswordEditor({ hasPassword }: { hasPassword: boolean }) {
   return (
     <section className="card" aria-labelledby="password-title">
       <h2 id="password-title" className="card-title">
-        <span aria-hidden="true">{hasPassword ? "🔒 " : "🔓 "}</span>
+        <Icon name={hasPassword ? "lock" : "unlock"} size={20} />
         {hasPassword ? "Private room" : "Open room"}
       </h2>
       <p className="field-hint">

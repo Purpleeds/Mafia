@@ -10,6 +10,8 @@ import {
   type Avatar,
   type CreateRoomPayload,
 } from "@mafia/shared";
+import { Logo } from "../art/Logo";
+import { Icon } from "../art/icons";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { ErrorText } from "../components/ErrorText";
 import { NicknameField } from "../components/NicknameField";
@@ -31,8 +33,8 @@ export function HomeScreen() {
   return (
     <div className="screen home">
       <header className="home-header">
-        <div className="logo" aria-hidden="true">
-          🕵️
+        <div className="logo">
+          <Logo />
         </div>
         <h1>Mafia</h1>
         <p className="tagline">The party game of secrets and suspicion. Grab your friends and a phone each.</p>
@@ -258,8 +260,7 @@ function CreateRoomForm() {
             <div id="create-code-hint" className="field-hint" aria-live="polite">
               {codeHint ? (
                 <span className="field-error">
-                  <span aria-hidden="true">⚠ </span>
-                  {codeHint}
+                  <Icon name="warn" size={15} /> {codeHint}
                 </span>
               ) : codeCheck?.ok ? (
                 <span>Your link will end in /{codeCheck.value}</span>
@@ -285,8 +286,7 @@ function CreateRoomForm() {
             <div id="create-password-hint" className="field-hint" aria-live="polite">
               {passwordHint ? (
                 <span className="field-error">
-                  <span aria-hidden="true">⚠ </span>
-                  {passwordHint}
+                  <Icon name="warn" size={15} /> {passwordHint}
                 </span>
               ) : (
                 <span>Leave empty for an open room. Anyone with the code can join.</span>

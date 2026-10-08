@@ -1,8 +1,10 @@
+import type { CSSProperties } from "react";
 import type { GameView, TimelineEntry } from "@mafia/shared";
+import { Icon } from "../../art/icons";
+import { RoleIcon, WinnerEmblem } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
-import { NIGHT_OUTCOME_LABEL, ROLE_LABEL, WINNER_EMOJI, WINNER_LABEL } from "../../lib/labels";
-import { ROLE_INFO } from "../../lib/roles";
+import { NIGHT_OUTCOME_LABEL, ROLE_LABEL, WINNER_LABEL } from "../../lib/labels";
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { nameOf, type PhaseProps } from "./common";
@@ -11,7 +13,7 @@ const WINNER_LINE = {
   safe: {
     town: "The town found every Mafia member. Hooray!",
     mafia: "The Mafia took over the town!",
-    jester: "The Jester tricked everyone! 🎉",
+    jester: "The Jester tricked everyone!",
   },
   normal: {
     town: "The last Mafia member is gone. The town is safe… for now.",
@@ -32,9 +34,7 @@ export function GameOverScreen({ received }: PhaseProps) {
   return (
     <div className="stack">
       <section className="card card-highlight center-block winner-card" aria-labelledby="winner-title">
-        <span className="winner-emoji" aria-hidden="true">
-          {winner ? WINNER_EMOJI[winner] : "🏁"}
-        </span>
+        {winner ? <WinnerEmblem winner={winner} size={132} /> : <Icon name="flag" size={72} />}
         <h2 id="winner-title" className="winner">
           {winner ? WINNER_LABEL[winner] : "Game over"}
         </h2>
@@ -61,7 +61,7 @@ export function GameOverScreen({ received }: PhaseProps) {
           Everyone's roles
         </h2>
         <ul className="player-list">
-          {players.map((p) => (
+          {players.map((p, index) => (
             <li key={p.id} className={`player-row${p.alive ? "" : " is-out"}${p.id === view.you?.id ? " is-you" : ""}`}>
               <AvatarBadge avatar={p.avatar} size={44} />
               <div className="player-info">
@@ -70,15 +70,16 @@ export function GameOverScreen({ received }: PhaseProps) {
                   {p.id === view.you?.id ? <span className="you-tag"> (you)</span> : null}
                   {winners.has(p.id) ? (
                     <span title="Winner">
-                      <span aria-hidden="true"> 🏆</span>
+                      {" "}
+                      <Icon name="trophy" size={16} className="winner-mark" />
                       <span className="sr-only"> winner</span>
                     </span>
                   ) : null}
                 </div>
                 <div className="player-tags">
                   {p.role ? (
-                    <span className="tag tag-role">
-                      <span aria-hidden="true">{ROLE_INFO[p.role].emoji} </span>
+                    <span className="tag tag-role flip-in" style={{ "--i": index } as CSSProperties}>
+                      <RoleIcon role={p.role} size={18} />
                       {ROLE_LABEL[p.role]}
                     </span>
                   ) : null}
@@ -90,7 +91,7 @@ export function GameOverScreen({ received }: PhaseProps) {
         </ul>
         {view.you?.loverIds ? (
           <p className="field-hint">
-            <span aria-hidden="true">💘 </span>Lovers: {view.you.loverIds.map((id) => nameOf(view, id)).join(" & ")}
+            <Icon name="heart" size={15} /> Lovers: {view.you.loverIds.map((id) => nameOf(view, id)).join(" & ")}
           </p>
         ) : null}
       </section>
@@ -122,43 +123,75 @@ export function Timeline({ view }: { view: GameView }) {
           return (
             <li key={entry.round} className="timeline-round">
               <h3 className="timeline-title">
-                <span aria-hidden="true">🌙 </span>Night {entry.round}
+                <Icon name="moon" size={16} /> Night {entry.round}
               </h3>
               <ul className="timeline-events">
                 {n.linkedIds ? (
                   <li>
-                    💘 Cupid linked {name(n.linkedIds[0])} and {name(n.linkedIds[1])}.
+                    <RoleIcon role="cupid" size={18} />
+                    <span>
+                      Cupid linked {name(n.linkedIds[0])} and {name(n.linkedIds[1])}.
+                    </span>
                   </li>
                 ) : null}
                 <li>
-                  🕶️{" "}
-                  {n.mafiaTargetId
-                    ? `The Mafia went after ${name(n.mafiaTargetId)}. ${NIGHT_OUTCOME_LABEL[n.outcome]}`
-                    : NIGHT_OUTCOME_LABEL.no_attack}
+                  <RoleIcon role="mafia" size={18} />
+                  <span>
+                    {n.mafiaTargetId
+                      ? `The Mafia went after ${name(n.mafiaTargetId)}. ${NIGHT_OUTCOME_LABEL[n.outcome]}`
+                      : NIGHT_OUTCOME_LABEL.no_attack}
+                  </span>
                 </li>
-                {n.protectedId ? <li>🩺 The Doctor protected {name(n.protectedId)}.</li> : null}
-                {n.guardedId ? <li>🛡️ The Bodyguard guarded {name(n.guardedId)}.</li> : null}
+                {n.protectedId ? (
+                  <li>
+                    <RoleIcon role="doctor" size={18} />
+                    <span>The Doctor protected {name(n.protectedId)}.</span>
+                  </li>
+                ) : null}
+                {n.guardedId ? (
+                  <li>
+                    <RoleIcon role="bodyguard" size={18} />
+                    <span>The Bodyguard guarded {name(n.guardedId)}.</span>
+                  </li>
+                ) : null}
                 {n.investigation ? (
                   <li>
-                    🔍 The Detective checked {name(n.investigation.targetId)}:{" "}
-                    {n.investigation.isMafia ? "Mafia" : "not Mafia"}.
+                    <RoleIcon role="detective" size={18} />
+                    <span>
+                      The Detective checked {name(n.investigation.targetId)}:{" "}
+                      {n.investigation.isMafia ? "Mafia" : "not Mafia"}.
+                    </span>
                   </li>
                 ) : null}
                 {n.deaths.map((d) => (
-                  <li key={d.playerId}>💀 {deathText(view, d)}</li>
+                  <li key={d.playerId}>
+                    <Icon name="grave" size={16} />
+                    <span>{deathText(view, d)}</span>
+                  </li>
                 ))}
-                {n.deaths.length === 0 ? <li>☀️ Everyone woke up.</li> : null}
+                {n.deaths.length === 0 ? (
+                  <li>
+                    <Icon name="sun" size={16} />
+                    <span>Everyone woke up.</span>
+                  </li>
+                ) : null}
               </ul>
               {entry.vote ? (
                 <>
                   <h3 className="timeline-title">
-                    <span aria-hidden="true">🗳 </span>Day {entry.round} vote
+                    <Icon name="ballot" size={16} /> Day {entry.round} vote
                   </h3>
                   <ul className="timeline-events">
                     {entry.vote.outcome === "eliminated" ? (
-                      entry.vote.deaths.map((d) => <li key={d.playerId}>💀 {deathText(view, d)}</li>)
+                      entry.vote.deaths.map((d) => (
+                        <li key={d.playerId}>
+                          <Icon name="grave" size={16} />
+                          <span>{deathText(view, d)}</span>
+                        </li>
+                      ))
                     ) : (
                       <li>
+                        <Icon name="scales" size={16} />
                         {entry.vote.outcome === "skipped"
                           ? "The town skipped. Nobody was voted out."
                           : entry.vote.outcome === "tie"

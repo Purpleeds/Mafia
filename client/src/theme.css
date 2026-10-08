@@ -1,0 +1,290 @@
+/* ==================================================================
+   Look and feel: display type, glass cards, icons and the animations
+   (card flips, votes landing, players fading, eliminations, saves).
+   Loaded after styles.css and game.css.
+   ================================================================== */
+
+/* ------------------------------------------------------------------ type */
+h1, h2, h3,
+.card-title,
+.page-title,
+.phase-name,
+.winner,
+.flip-role,
+.death-name,
+.typewriter-text,
+.display {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" var(--soft);
+  font-optical-sizing: auto;
+}
+.card-title { font-weight: 700; letter-spacing: 0.005em; }
+.phase-name, .page-title, .winner { font-weight: 800; letter-spacing: -0.01em; }
+.typewriter-text { font-weight: 500; font-size: 1.32rem; }
+.btn, .segment, .tag, .mode-badge { font-weight: 700; }
+
+/* Words that sit straight on the scene need a shadow on bright skies. */
+.home-header,
+.page-title,
+.room-header,
+.join-header,
+.help-nav .btn-ghost,
+.home-links .btn-ghost {
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.home-links .btn-ghost, .help-nav .btn-ghost { color: var(--text); }
+
+/* ------------------------------------------------------------------ icons */
+.icon { flex: none; display: inline-block; vertical-align: -0.18em; }
+.btn .icon, .tag .icon, .eyebrow .icon, .card-title .icon, .card-lead .icon, .info-banner .icon { margin-right: 0.3em; }
+.role-icon { flex: none; display: inline-block; vertical-align: middle; }
+.tag .role-icon { margin-right: 0.3em; }
+
+/* ------------------------------------------------------------------ glass cards */
+.card,
+.top-bar,
+.overlay-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 120px),
+    var(--surface);
+  border-color: var(--card-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow);
+}
+/* No backdrop blur: blurring the animated background every frame costs too much on phones. */
+.top-bar { backdrop-filter: none; }
+.card-highlight { border-color: var(--accent); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, var(--accent-strong), var(--accent-strong)); }
+.narrator { border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+
+/* ------------------------------------------------------------------ home and badges */
+.home-header h1 { font-size: clamp(2.6rem, 12vw, 3.6rem); margin-top: 6px; }
+.logo-art { width: clamp(92px, 26vw, 128px); height: auto; }
+.mode-badge .icon { margin-right: 0.15em; }
+.mode-badge-safe .icon { color: #ffd36b; }
+.mode-badge-normal .icon { color: #dfe6f0; }
+
+.conn-dot {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  vertical-align: 0.02em;
+}
+.conn-dot-online, .conn-dot-connected { background: currentColor; }
+.conn-dot-reconnecting, .conn-dot-connecting { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+
+/* ------------------------------------------------------------------ role card */
+.flip-card {
+  width: min(300px, 80vw);
+  height: auto;
+  aspect-ratio: 5 / 7;
+}
+.flip-face {
+  padding: 0;
+  border: 0;
+  border-radius: 7% / 5%;
+  background: none;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+}
+.flip-art { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.flip-caption {
+  position: absolute;
+  left: 9%;
+  right: 9%;
+  bottom: 7%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.flip-front .flip-caption { bottom: 8%; color: #fdf6e3; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+.flip-caption .flip-title { font-family: var(--font-display); font-variation-settings: "SOFT" var(--soft); font-size: 1.25rem; font-weight: 800; }
+.flip-caption .flip-sub { margin: 0; color: inherit; opacity: 0.85; }
+.flip-back .flip-caption { top: 55%; bottom: 6%; justify-content: flex-start; gap: 6px; }
+.flip-summary { font-size: 0.95rem; font-weight: 600; line-height: 1.35; }
+.flip-team-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.role-details { gap: 8px; }
+.role-details dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.role-details dt { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 800; }
+.role-details dd { margin: 0; }
+.role-details-hidden { color: var(--text-muted); text-align: center; }
+
+/* ------------------------------------------------------------------ players fading out */
+.pcard,
+.player-row {
+  transition: opacity 0.9s ease, filter 0.9s ease, border-color 0.15s ease, background-color 0.3s ease, transform 0.1s ease;
+}
+.pcard .avatar-badge,
+.player-row .avatar-badge { transition: filter 0.9s ease, opacity 0.9s ease, transform 0.9s ease; }
+.pcard.is-out .avatar-badge { filter: grayscale(1) brightness(0.85); transform: scale(0.92); }
+.pcard.is-fading,
+.player-row.is-fading { animation: player-fade 1.8s ease both; }
+.pcard.is-fading .avatar-badge,
+.player-row.is-fading .avatar-badge { animation: avatar-fade 1.8s ease both; }
+@keyframes player-fade { from { opacity: 1; } 40% { opacity: 1; } to { opacity: 0.55; } }
+@keyframes avatar-fade {
+  from { filter: none; transform: none; }
+  40% { filter: none; transform: scale(1.06); }
+  to { filter: grayscale(1) brightness(0.85); transform: scale(0.92); }
+}
+
+/* ------------------------------------------------------------------ votes landing */
+.vote-count { animation: vote-land 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.voter-row .avatar-badge { animation: voter-drop 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.pcard.is-selected { animation: pick-pop 0.32s ease both; }
+@keyframes vote-land {
+  0% { transform: translateY(-16px) scale(1.7); opacity: 0; }
+  60% { transform: translateY(0) scale(0.9); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes voter-drop {
+  0% { transform: translateY(-14px) scale(0.6); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes pick-pop { 50% { transform: scale(1.04); } }
+.tally-bar > span { animation: tally-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tally-grow { from { width: 0; } }
+.skip-icon { color: var(--text-muted); }
+
+/* ------------------------------------------------------------------ eliminations */
+.death-card { position: relative; overflow: visible; isolation: isolate; }
+.death-card .death-body { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.death-card.is-settling { animation: death-settle 1.9s ease both; }
+@keyframes death-settle { 0%, 45% { opacity: 0; } 100% { opacity: 1; } }
+
+/* Safe Mode: a soft poof of smoke and the player's card floating away. */
+.ghost-card {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: inherit;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  animation: float-away 2s cubic-bezier(0.4, 0, 0.6, 1) 0.35s both;
+}
+@keyframes float-away {
+  0% { transform: none; opacity: 1; }
+  20% { transform: translateY(-6px) rotate(-1deg); opacity: 1; }
+  100% { transform: translate(18px, -140px) rotate(-9deg) scale(0.86); opacity: 0; }
+}
+.poof { position: absolute; left: 40px; top: 50%; width: 0; height: 0; z-index: 3; pointer-events: none; }
+.puff {
+  position: absolute;
+  left: calc(var(--size) / -2);
+  top: calc(var(--size) / -2);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ffffff 0%, #ece6ff 45%, rgba(236, 230, 255, 0) 72%);
+  opacity: 0;
+  animation: puff 1.5s ease-out var(--delay) both;
+}
+@keyframes puff {
+  0% { transform: translate(0, 0) scale(0.2); opacity: 0; }
+  15% { opacity: 0.95; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.5); opacity: 0; }
+}
+
+/* Normal Mode: a dramatic red pulse. */
+.death-card.is-struck { animation: red-hit 1.2s ease both; }
+.death-card.is-struck .avatar-badge { animation: red-drain 1.6s ease both; }
+.shock-ring {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border-radius: 50%;
+  border: 3px solid #e2203a;
+  pointer-events: none;
+  animation: shock 1.1s ease-out both;
+}
+@keyframes red-hit {
+  0% { transform: scale(1.04); box-shadow: 0 0 0 0 rgba(226, 32, 58, 0.9); background-color: rgba(226, 32, 58, 0.45); }
+  12% { transform: translateX(-6px); }
+  24% { transform: translateX(5px); }
+  36% { transform: translateX(-3px); }
+  48% { transform: none; }
+  100% { box-shadow: 0 0 0 22px rgba(226, 32, 58, 0); background-color: var(--danger-bg); }
+}
+@keyframes red-drain {
+  0% { filter: none; }
+  25% { filter: sepia(1) saturate(6) hue-rotate(-40deg) brightness(0.9); }
+  100% { filter: grayscale(0.85) brightness(0.8); }
+}
+@keyframes shock {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(14); opacity: 0; border-width: 1px; }
+}
+
+/* ------------------------------------------------------------------ the Doctor's save */
+.save-card {
+  border-color: color-mix(in srgb, var(--save) 70%, transparent);
+  background:
+    radial-gradient(120% 140% at 50% 0%, color-mix(in srgb, var(--save) 18%, transparent), transparent 70%),
+    var(--surface);
+}
+.save-card.is-fresh { animation: save-glow 3.2s ease both; }
+.save-card .save-icon { color: var(--save); filter: drop-shadow(0 0 8px color-mix(in srgb, var(--save) 70%, transparent)); }
+.save-head { display: flex; align-items: center; gap: 12px; }
+@keyframes save-glow {
+  0% { box-shadow: 0 0 0 0 rgba(93, 255, 163, 0); transform: scale(0.97); opacity: 0; }
+  18% { box-shadow: 0 0 44px 10px rgba(93, 255, 163, 0.55); transform: scale(1.01); opacity: 1; }
+  100% { box-shadow: 0 0 22px 2px rgba(93, 255, 163, 0.22), var(--shadow); transform: none; opacity: 1; }
+}
+
+/* ------------------------------------------------------------------ game over */
+.winner-emblem { overflow: visible; animation: emblem-in 0.9s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.winner-emblem .rays { transform-origin: 60px 60px; animation: spin 40s linear infinite; }
+@keyframes emblem-in { from { transform: scale(0.3) rotate(-20deg); opacity: 0; } }
+.flip-in {
+  display: inline-flex;
+  animation: flip-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: calc(0.4s + var(--i, 0) * 90ms);
+  transform-origin: 50% 0;
+}
+@keyframes flip-in {
+  from { transform: perspective(400px) rotateX(-90deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.winner-mark { color: #f2c94c; }
+.timeline-events { list-style: none; padding-left: 0; }
+.timeline-events li { display: flex; gap: 8px; align-items: flex-start; }
+.timeline-events li > .icon,
+.timeline-events li > .role-icon { margin-top: 0.15em; }
+
+/* ------------------------------------------------------------------ settings */
+.fx-settings .segmented { flex-wrap: nowrap; }
+.fx-settings .segment { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .winner-emblem .rays { animation: none; }
+  .ghost-card, .poof, .shock-ring { display: none; }
+}
+.info-banner { justify-content: flex-start; }
+.icon-after { margin-left: 0.3em; margin-right: 0 !important; }
+.ready-badge { color: var(--success); }

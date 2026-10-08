@@ -1,3 +1,4 @@
+import { Icon } from "../art/icons";
 import { MODE_INFO } from "../lib/copy";
 import { PHASE_LABEL } from "../lib/labels";
 import type { ReceivedState } from "../state/store";
@@ -13,12 +14,12 @@ export function GameTopBar({ received, onHelp }: { received: ReceivedState; onHe
       <div className="top-bar-row">
         <ModeBadge mode={view.settings.contentMode} />
         <span className="top-bar-room" aria-label={`Room ${room.code}`}>
-          {room.hasPassword ? <span aria-hidden="true">🔒 </span> : null}
+          {room.hasPassword ? <Icon name="lock" size={14} /> : null}
           {room.code}
         </span>
         <ConnectionIndicator />
         <button type="button" className="btn btn-small top-bar-help" onClick={onHelp} aria-label="How to play and role guide">
-          <span aria-hidden="true">?</span>
+          <Icon name="help" size={20} />
         </button>
       </div>
       <div className="top-bar-row top-bar-phase">

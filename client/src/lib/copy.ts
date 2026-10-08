@@ -1,10 +1,11 @@
 import type { ContentMode, NightActionKind, Role, VoteOutcome, GameView } from "@mafia/shared";
+import type { IconName } from "../art/icons";
 import { ROLE_LABEL } from "./labels";
 
 /** Wording that changes with the content mode. The rules never do. */
-export const MODE_INFO: Record<ContentMode, { label: string; emoji: string; blurb: string }> = {
-  safe: { label: "Safe Mode", emoji: "🎈", blurb: "Family-friendly and cartoony." },
-  normal: { label: "Normal Mode", emoji: "🕵️", blurb: "Classic crime-drama Mafia." },
+export const MODE_INFO: Record<ContentMode, { label: string; icon: IconName; blurb: string }> = {
+  safe: { label: "Safe Mode", icon: "sun", blurb: "Family-friendly and cartoony." },
+  normal: { label: "Normal Mode", icon: "moon", blurb: "Classic crime-drama Mafia." },
 };
 
 export const NIGHT_PROMPT: Record<ContentMode, Record<NightActionKind, string>> = {
@@ -48,6 +49,11 @@ export function nightNarration(mode: ContentMode, view: GameView): string {
   const report = view.nightReport;
   const name = nameLookup(view);
   const safe = mode === "safe";
+  if (report?.saved) {
+    return safe
+      ? "The sun rises… The Mafia tried to send someone home last night, but the Doctor got there first! Everyone is safe."
+      : "Dawn breaks. The Mafia struck in the night, but the Doctor pulled their victim back from the brink. Nobody died.";
+  }
   if (!report || report.deaths.length === 0) {
     return safe
       ? "The sun peeks over the rooftops. Everyone made it through the night safe and sound!"

@@ -1,0 +1,109 @@
+/* ------------------------------------------------------------------ animated background */
+.backdrop {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 100vh;
+  height: 100lvh;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg);
+}
+.backdrop-gl,
+.static-backdrop {
+  position: absolute;
+  inset: 0;
+}
+.backdrop-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+}
+.backdrop-canvas.is-ready { opacity: 1; }
+
+/* The static scene (no WebGL): colours fade with CSS transitions. */
+.static-backdrop { --fade: 1.8s; }
+.static-sky {
+  position: absolute;
+  inset: 0;
+  background-color: var(--horizon);
+  transition: background-color var(--fade) ease;
+}
+.static-zenith {
+  position: absolute;
+  inset: 0;
+  background-color: var(--zenith);
+  transition: background-color var(--fade) ease;
+  -webkit-mask-image: linear-gradient(to top, transparent 12%, rgba(0, 0, 0, 0.55) 45%, #000 92%);
+  mask-image: linear-gradient(to top, transparent 12%, rgba(0, 0, 0, 0.55) 45%, #000 92%);
+}
+.static-stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: #fff6dc;
+  opacity: var(--stars);
+  transition: opacity var(--fade) ease;
+}
+.static-sun,
+.static-moon {
+  position: absolute;
+  border-radius: 50%;
+  transition:
+    left 2.4s ease-in-out,
+    bottom 2.4s ease-in-out,
+    opacity var(--fade) ease,
+    background-color var(--fade) ease;
+}
+.static-moon { overflow: hidden; }
+.static-moon-shadow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--zenith);
+  opacity: 0.9;
+}
+.static-village {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: calc(var(--unit) * 6);
+  height: calc(var(--unit) * 0.5);
+  transform: translateX(-50%);
+}
+.static-layer { transition: fill var(--fade) ease; }
+.static-far { fill: var(--far); }
+.static-mid { fill: var(--mid); }
+.static-near { fill: var(--near); }
+.static-lights {
+  fill: var(--window);
+  opacity: var(--lights);
+  transition: opacity var(--fade) ease;
+}
+.static-mist { transition: opacity var(--fade) ease; }
+.static-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(0, 0, 0, var(--vignette)) 100%);
+}
+
+/* Effect pulses without WebGL. */
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: fx-flash 2.2s ease-out both;
+}
+.fx-flash-red { background: radial-gradient(ellipse at center, rgba(120, 0, 10, 0.1) 30%, rgba(200, 10, 30, 0.75) 100%); animation-duration: 2s; }
+.fx-flash-save { background: radial-gradient(circle at center, rgba(90, 255, 160, 0.55), rgba(90, 255, 160, 0) 70%); animation-duration: 3s; }
+.fx-flash-puff { background: radial-gradient(circle at center, rgba(245, 240, 255, 0.4), rgba(245, 240, 255, 0) 65%); }
+@keyframes fx-flash {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  100% { opacity: 0; }
+}

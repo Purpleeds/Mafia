@@ -1,5 +1,4 @@
 /* ------------------------------------------------------------------ layout helpers */
-.background { transition: filter 1s ease; }
 
 .screen-wide { max-width: 560px; }
 .page-title { font-size: 1.8rem; font-weight: 800; }
@@ -22,7 +21,6 @@
   .game-grid.has-side { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
   .game-side { position: sticky; top: 96px; }
   .chat-list { max-height: 42vh; }
-  .logo { font-size: 3.8rem; }
 }
 
 /* ------------------------------------------------------------------ badges and status */
@@ -131,7 +129,7 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
   font-weight: 800;
   font-size: 0.8rem;
 }
-.skip-emoji { font-size: 2rem; line-height: 1; }
+.skip-icon { display: block; }
 
 /* ------------------------------------------------------------------ narrator */
 .narrator { border-color: var(--accent); }
@@ -234,16 +232,24 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
   --accent: #7068d8;
   --accent-strong: #867ee6;
 }
-:root[data-phase="NIGHT"] .background { filter: brightness(0.35) saturate(0.7); }
-.night-sky { position: relative; height: 96px; text-align: center; }
-.moon { font-size: 4rem; display: inline-block; animation: float 6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(255, 244, 190, 0.5)); }
-.star { position: absolute; color: #fff3b0; opacity: 0.8; animation: twinkle 3s ease-in-out infinite; }
-.star.s1 { left: 18%; top: 18px; }
-.star.s2 { right: 20%; top: 40px; animation-delay: 1s; }
-.star.s3 { left: 32%; bottom: 8px; font-size: 0.7rem; animation-delay: 2s; }
 @keyframes float { 50% { transform: translateY(-6px); } }
 @keyframes twinkle { 50% { opacity: 0.2; } }
-.sleep-line { text-align: center; font-size: 1.2rem; font-weight: 700; color: var(--text-muted); }
+/* A pill, so the caption stays readable when the moon sits right behind it. */
+.sleep-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 4px auto 0;
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: rgba(4, 6, 20, 0.55);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.sleep-moon { color: #fff2c4; animation: float 6s ease-in-out infinite; }
 .zzz { display: inline-block; animation: drift 2.4s ease-in-out infinite; }
 @keyframes drift { 50% { transform: translateY(-4px); opacity: 0.5; } }
 .night-card { border-color: var(--border); }
@@ -290,7 +296,7 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
 .tally-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.6s ease; }
 
 .winner-card { padding-block: 24px; }
-.winner-emoji { font-size: 4rem; line-height: 1; animation: float 4s ease-in-out infinite; }
+
 .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
 .timeline-round { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; border-left: 3px solid var(--border); }
 .timeline-title { font-size: 1rem; font-weight: 800; }
@@ -328,7 +334,7 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
 .role-guide { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (min-width: 700px) { .role-guide { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .role-entry-head { display: flex; align-items: center; gap: 12px; }
-.role-entry-emoji { font-size: 2.4rem; line-height: 1; }
+.role-entry-icon { flex: none; }
 .help-nav { display: flex; justify-content: space-between; }
 .help-page { padding-bottom: 24px; }
 .home-links { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }

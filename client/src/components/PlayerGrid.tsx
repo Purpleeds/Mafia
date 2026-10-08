@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { PublicPlayerView } from "@mafia/shared";
+import { Icon } from "../art/icons";
 import { AvatarBadge } from "./AvatarBadge";
 
 interface PlayerGridProps {
@@ -19,6 +20,8 @@ interface PlayerGridProps {
   extra?: ReactNode;
   /** Hide eliminated players. */
   hideOut?: boolean;
+  /** Players who just left the game: they fade out as the card appears. */
+  fadingIds?: readonly string[];
 }
 
 /** Big, tappable player cards. The same component draws the real and the decoy night grids. */
@@ -33,6 +36,7 @@ export function PlayerGrid({
   captions,
   extra,
   hideOut,
+  fadingIds = [],
 }: PlayerGridProps) {
   const shown = players.filter((p) => !(hideOut && (!p.alive || p.kicked)));
   return (
@@ -53,7 +57,7 @@ export function PlayerGrid({
             </span>
             {out ? (
               <span className="pcard-caption">
-                <span aria-hidden="true">✝ </span>
+                <Icon name="grave" size={13} />{" "}
                 {p.kicked ? "Removed" : p.role ? `Out · ${p.role}` : "Out"}
               </span>
             ) : caption ? (
@@ -61,12 +65,13 @@ export function PlayerGrid({
             ) : null}
             {selected ? (
               <span className="pcard-check" aria-hidden="true">
-                ✓
+                <Icon name="check" size={14} />
               </span>
             ) : null}
           </>
         );
-        const className = `pcard${out ? " is-out" : ""}${selected ? " is-selected" : ""}${p.id === youId ? " is-you" : ""}`;
+        const fading = out && fadingIds.includes(p.id);
+        const className = `pcard${out ? " is-out" : ""}${fading ? " is-fading" : ""}${selected ? " is-selected" : ""}${p.id === youId ? " is-you" : ""}`;
         return (
           <li key={p.id}>
             {pickable ? (

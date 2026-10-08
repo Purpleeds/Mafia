@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { joinUrl } from "@mafia/shared";
+import { Icon } from "../art/icons";
 import { showToast } from "../state/store";
 import { QrCode } from "./QrCode";
 
@@ -53,12 +54,13 @@ export function InviteCard({ code, hasPassword }: { code: string; hasPassword: b
       </div>
       <div className="button-row">
         <button type="button" className="btn" onClick={() => void copy()}>
-          <span aria-hidden="true">{copied ? "✓ " : "📋 "}</span>
+          <Icon name={copied ? "check" : "copy"} />
           {copied ? "Copied!" : "Copy link"}
         </button>
         {canShare ? (
           <button type="button" className="btn" onClick={() => void share()}>
-            <span aria-hidden="true">📤 </span>Share
+            <Icon name="share" />
+            Share
           </button>
         ) : null}
       </div>

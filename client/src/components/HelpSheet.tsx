@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { ContentMode } from "@mafia/shared";
+import { FxSettings } from "./FxSettings";
 import { HowToPlayContent, RoleGuideContent } from "./RulesContent";
 
 /** "How to play" and the role guide in a dialog, so you never leave the game to read them. */
 export function HelpSheet({ mode, onClose }: { mode: ContentMode; onClose: () => void }) {
-  const [tab, setTab] = useState<"how" | "roles">("how");
+  const [tab, setTab] = useState<"how" | "roles" | "display">("how");
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -46,8 +47,25 @@ export function HelpSheet({ mode, onClose }: { mode: ContentMode; onClose: () =>
           >
             Role guide
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "display"}
+            className={`segment${tab === "display" ? " is-selected" : ""}`}
+            onClick={() => setTab("display")}
+          >
+            Display
+          </button>
         </div>
-        <div className="sheet-body">{tab === "how" ? <HowToPlayContent /> : <RoleGuideContent initialMode={mode} />}</div>
+        <div className="sheet-body">
+          {tab === "how" ? (
+            <HowToPlayContent />
+          ) : tab === "roles" ? (
+            <RoleGuideContent initialMode={mode} />
+          ) : (
+            <FxSettings idPrefix="sheet-fx" />
+          )}
+        </div>
       </div>
     </div>
   );

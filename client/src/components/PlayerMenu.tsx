@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "../art/icons";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import { showToast } from "../state/store";
@@ -70,7 +71,8 @@ export function PlayerMenu({ playerId, name, canMakeHost }: PlayerMenuProps) {
             <div className="button-row">
               {canMakeHost ? (
                 <button type="button" className="btn" disabled={action.pending} onClick={() => void makeHost()}>
-                  <span aria-hidden="true">👑 </span>Make host
+                  <Icon name="crown" />
+                  Make host
                 </button>
               ) : null}
               <button type="button" className="btn btn-danger-outline" onClick={() => setConfirmKick(true)}>

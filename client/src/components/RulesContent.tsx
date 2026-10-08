@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { ContentMode } from "@mafia/shared";
+import { Icon } from "../art/icons";
+import { RoleIcon } from "../art/roles";
 import { MODE_INFO } from "../lib/copy";
-import { ROLE_INFO, ROLE_ORDER, TEAM_LABEL } from "../lib/roles";
 import { ROLE_LABEL } from "../lib/labels";
+import { ROLE_INFO, ROLE_ORDER, TEAM_LABEL } from "../lib/roles";
 
 /** The "How to play" text, shared by the page and the in-game help sheet. */
 export function HowToPlayContent() {
@@ -91,7 +93,8 @@ export function RoleGuideContent({ initialMode = "safe" }: { initialMode?: Conte
             aria-pressed={m === mode}
             onClick={() => setMode(m)}
           >
-            {MODE_INFO[m].emoji} {MODE_INFO[m].label}
+            <Icon name={MODE_INFO[m].icon} size={16} />
+            {MODE_INFO[m].label}
           </button>
         ))}
       </div>
@@ -101,9 +104,7 @@ export function RoleGuideContent({ initialMode = "safe" }: { initialMode?: Conte
           return (
             <li key={role} className="card role-entry">
               <div className="role-entry-head">
-                <span className="role-entry-emoji" aria-hidden="true">
-                  {info.emoji}
-                </span>
+                <RoleIcon role={role} size={52} className="role-entry-icon" />
                 <div>
                   <h3 className="card-title">{ROLE_LABEL[role]}</h3>
                   <div className="player-tags">
@@ -119,7 +120,9 @@ export function RoleGuideContent({ initialMode = "safe" }: { initialMode?: Conte
               <p>
                 <strong>Goal:</strong> {info.goal}
               </p>
-              <p className="field-hint">💡 {info.tip}</p>
+              <p className="field-hint">
+                <Icon name="bulb" size={15} /> {info.tip}
+              </p>
             </li>
           );
         })}
