@@ -162,6 +162,29 @@ phase. A client only sends `{ text }`; it can't pick, and can't try, a channel.
 - Four quick reactions (thinking, suspicious, laughing, shocked) sit above the text box wherever you may write. They are sent as
   `chat:react`, follow the same routing, lock and rate limit, and carry no text. At night the Mafia can react in their whisper box.
 
+## Testing alone (development tools)
+
+Everything here exists only while the server is **not** in production: `NODE_ENV` isn't `production` and `RENDER` isn't `true`
+(`npm run dev` and a local `npm start` qualify; Render doesn't). In production the dev events are unknown events, `/dev-config`
+answers `{ "dev": false }` and the client shows none of it.
+
+- **Fill with bots**: a "Development tools" card in the host's lobby. *Fill with bots* brings the room up to 8 players, *Add a
+  bot* adds one. Bots join through the same service call as a browser, so they are normal players (named "Bot Ada", "Bot Bo"…).
+  Every 1.5 s each bot looks at its own view and maybe acts: it acknowledges its role, takes a random valid night action (the
+  Mafia pick a victim, the Doctor protects, Cupid links two players…), votes at random (sometimes skip) and now and then chats or
+  reacts, only where the server's chat rules let it (day chat, Mafia whisper at night, spectator chat once eliminated). They never
+  use hidden state they shouldn't know and they go through the engine's normal validation. See `server/src/dev/bots.ts`.
+- **Debug panel**: a small *Debug* button at the bottom left of any room screen opens the server's whole game state: a table of
+  players with their secret roles (bots marked), the phase, round and timer, and the raw state as a collapsible tree. It refreshes
+  by itself when the game changes, and has *Copy JSON*. (`dev:debugState`, any member of the room.)
+- **Several real players**: open the site in more tabs, or in incognito windows. In development each browser *tab* remembers its
+  own seat (sessionStorage instead of localStorage, and its own nickname), so tabs of one browser really are different players, and
+  a refresh keeps each tab's seat. Incognito windows are separate browsers anyway. In production seats stay in localStorage so a
+  closed and reopened tab resumes. The room-creation limits are relaxed in development.
+- **The AI narrator in bot games**: it is off by default, so ready-made lines are used straight away. If the host switched it on
+  but Puter isn't signed in or can't be reached, the host's browser answers with a failure and the ready-made line is used at
+  once; if the host's page doesn't answer at all, after 6 seconds. A test plays whole bot games to the end both ways.
+
 ## Rooms and joining
 
 - Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.
@@ -203,6 +226,7 @@ Your identity always comes from the session the socket joined with, never from t
 | `chat:react` | `{ reaction }` | `thinking`, `suspicious`, `laughing` or `shocked`; routed exactly like `chat:send` |
 | `narrator:submit` | `{ requestId, text }` | host only: the AI's narration for a `narrator:request`, or `null` if it failed |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
+| `dev:fillBots` / `dev:debugState` | `{ count? }` / `{}` | development only (see above): add bots / the full server state |
 
 | Server → client | Payload |
 | --- | --- |

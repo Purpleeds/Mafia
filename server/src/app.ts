@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import express, { type Express } from "express";
 import { Server } from "socket.io";
+import { DevTools } from "./dev/devTools.js";
 import { createConsoleLogger, type Logger } from "./logger.js";
 import { MemoryRoomStore, type RoomStore } from "./rooms/roomStore.js";
 import { RoomService, type RoomServiceOptions } from "./rooms/roomService.js";
@@ -23,6 +24,11 @@ export interface MafiaServerOptions {
   sweepIntervalMs?: number;
   trustProxyHops?: number;
   maxSocketsPerIp?: number;
+  /**
+   * Development tools: bots, the debug panel and relaxed room limits. index.ts
+   * turns them on only outside production; they are off by default.
+   */
+  devTools?: boolean;
   service?: Partial<
     Pick<
       RoomServiceOptions,
@@ -36,6 +42,8 @@ export interface MafiaServerInstance {
   httpServer: HttpServer;
   io: MafiaServer;
   service: RoomService;
+  /** Set when dev tools are on. */
+  devTools: DevTools | null;
   close(): Promise<void>;
 }
 
@@ -50,6 +58,11 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
   if (trustProxyHops > 0) app.set("trust proxy", trustProxyHops);
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true });
+  });
+  const dev = options.devTools === true;
+  // The client asks this once at start-up to know whether to show its dev tools.
+  app.get("/dev-config", (_req, res) => {
+    res.set("Cache-Control", "no-store").json({ dev });
   });
 
   const clientDist = options.clientDist ?? null;
@@ -68,16 +81,22 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     maxHttpBufferSize: 16 * 1024,
   });
 
+  const store = options.store ?? new MemoryRoomStore();
   const scheduler = new TimeoutScheduler(clock);
   const service = new RoomService({
-    store: options.store ?? new MemoryRoomStore(),
+    store,
     broadcaster: new SocketBroadcaster(io),
     scheduler,
     logger,
     clock,
+    // Testing alone means making rooms again and again.
+    ...(dev ? { maxRoomsPerOwner: 50 } : {}),
     ...options.service,
   });
-  const limiter = new RateLimiter({ ...DEFAULT_RATE_LIMITS, ...options.rateLimits }, clock);
+  const devTools = dev ? new DevTools({ service, store, logger, clock }) : null;
+  devTools?.start();
+  const devLimits: Partial<RateLimitConfig> = dev ? { createRoom: { capacity: 100, refillPerSecond: 1 } } : {};
+  const limiter = new RateLimiter({ ...DEFAULT_RATE_LIMITS, ...devLimits, ...options.rateLimits }, clock);
   const presence = new Presence();
 
   attachSocketHandlers(io, {
@@ -89,6 +108,7 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     disconnectGraceMs: options.disconnectGraceMs ?? 60_000,
     trustProxyHops,
     maxSocketsPerIp: options.maxSocketsPerIp ?? 200,
+    ...(devTools ? { devTools } : {}),
   });
 
   const sweep = setInterval(() => {
@@ -102,9 +122,11 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     httpServer,
     io,
     service,
+    devTools,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweep);
+        devTools?.stop();
         scheduler.clearAll();
         presence.clear();
         io.close(() => resolve());

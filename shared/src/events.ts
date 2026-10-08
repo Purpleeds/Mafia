@@ -147,6 +147,35 @@ export interface NarratorSubmitPayload {
   text: string | null;
 }
 
+// ---------------------------------------------------------------- development tools
+// These exist only while the server runs with dev tools on (never in production);
+// otherwise the server answers "Unknown event.".
+
+/** Adds bot players to the lobby. With no count, fills the room to 8 players. */
+export interface DevFillBotsPayload {
+  count?: number;
+}
+
+export interface DevFillBotsResult {
+  added: number;
+  players: number;
+}
+
+/** Everything the server knows about the room, hidden information included. */
+export interface DevDebugSnapshot {
+  serverNow: number;
+  /** The raw game state (every role, every night choice). */
+  state: unknown;
+  botIds: string[];
+  /** Epoch ms the room's timer is set to fire, or null. */
+  timerAt: number | null;
+  chatMessages: number;
+  members: number;
+}
+
+/** The dev-only events, kept apart from CLIENT_EVENTS so production can't receive them. */
+export const DEV_EVENTS = ["dev:fillBots", "dev:debugState"] as const;
+
 export interface TimeSyncPayload {
   /** The client's Date.now() when it sent the request (echoed back). */
   clientSentAt: number;
@@ -244,6 +273,10 @@ export interface ClientToServerEvents {
   "chat:react": (payload: ChatReactPayload, ack: Ack) => void;
   "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
+  /** Dev tools only. */
+  "dev:fillBots": (payload: DevFillBotsPayload, ack: Ack<DevFillBotsResult>) => void;
+  /** Dev tools only. */
+  "dev:debugState": (payload: Record<string, never>, ack: Ack<DevDebugSnapshot>) => void;
 }
 
 export interface ServerToClientEvents {
@@ -287,6 +320,6 @@ export const CLIENT_EVENTS = [
 ] as const satisfies readonly ClientEventName[];
 
 // Compile-time check that CLIENT_EVENTS lists every event.
-type MissingClientEvents = Exclude<ClientEventName, (typeof CLIENT_EVENTS)[number]>;
+type MissingClientEvents = Exclude<ClientEventName, (typeof CLIENT_EVENTS)[number] | (typeof DEV_EVENTS)[number]>;
 const allClientEventsListed: MissingClientEvents extends never ? true : never = true;
 void allClientEventsListed;

@@ -1,6 +1,7 @@
 import {
   CLIENT_EVENTS,
   type AckResult,
+  DEV_EVENTS,
   type ClientEventName,
   type ErrorCode,
   type GameErrorCode,
@@ -11,10 +12,12 @@ import { digest } from "../rooms/ids.js";
 import { KeyedMutex } from "../rooms/keyedMutex.js";
 import type { PlayerAction, RoomService, ServiceResult } from "../rooms/roomService.js";
 import type { Presence } from "./presence.js";
+import type { DevTools } from "../dev/devTools.js";
 import type { RateCategory, RateLimiter } from "./rateLimiter.js";
 import { playerRoom, type MafiaServer, type MafiaSocket } from "./types.js";
 import {
   parseChat,
+  parseFillBots,
   parseReaction,
   parseCreateRoom,
   parseEmpty,
@@ -44,6 +47,8 @@ export interface SocketHandlerOptions {
   trustProxyHops: number;
   /** Open sockets allowed per IP at once (a party on one Wi-Fi shares an IP). */
   maxSocketsPerIp: number;
+  /** Present only in development: answers the dev:* events. In production they're unknown events. */
+  devTools?: DevTools;
 }
 
 type Reply<T> = (result: AckResult<T>) => void;
@@ -54,6 +59,7 @@ interface Session {
 }
 
 const CLIENT_EVENT_SET = new Set<string>(CLIENT_EVENTS);
+const DEV_EVENT_SET = new Set<string>(DEV_EVENTS);
 
 /** Problems with the request itself; worth logging with who sent it. Game-rule rejections are logged by the service. */
 const TRANSPORT_CODES = new Set<ErrorCode>([
@@ -88,7 +94,7 @@ export function clientIp(socket: MafiaSocket, trustProxyHops: number): string {
 }
 
 export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOptions): void {
-  const { service, logger, limiter, presence, clock } = options;
+  const { service, logger, limiter, presence, clock, devTools } = options;
   /** Session changes (create/join/resume/leave) on one socket run one at a time. */
   const sessionQueue = new KeyedMutex();
   const socketsPerIp = new Map<string, number>();
@@ -148,7 +154,7 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       const [event] = packet;
       const last: unknown = packet[packet.length - 1];
       const ack = typeof last === "function" ? (last as Reply<never>) : undefined;
-      if (typeof event !== "string" || !CLIENT_EVENT_SET.has(event)) {
+      if (typeof event !== "string" || !(CLIENT_EVENT_SET.has(event) || (devTools && DEV_EVENT_SET.has(event)))) {
         warnThrottled("event.unknown", { event: String(event).slice(0, 40) });
         ack?.(failure("BAD_REQUEST", "Unknown event."));
         return;
@@ -395,6 +401,15 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
     on("narrator:submit", { category: "gameAction", parse: parseNarratorSubmit }, (p) =>
       withSession((s) => service.submitNarration(s.roomCode, s.playerId, p.requestId, p.text)),
     );
+
+    if (devTools) {
+      on("dev:fillBots", { category: "hostAction", parse: parseFillBots }, (p) =>
+        withSession((s) => devTools.bots.addBots(s.roomCode, s.playerId, p.count)),
+      );
+      on("dev:debugState", { category: "gameAction", parse: () => ({ ok: true, value: {} }) }, () =>
+        withSession((s) => devTools.debugSnapshot(s.roomCode, s.playerId)),
+      );
+    }
 
     on("time:sync", { category: "timeSync", parse: parseTimeSync }, async (p) => ({
       ok: true,

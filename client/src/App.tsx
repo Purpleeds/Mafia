@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ContentMode, Phase, Winner } from "@mafia/shared";
+import { DebugPanel } from "./components/DevTools";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { ReplacedOverlay } from "./components/ReplacedOverlay";
 import { Toasts } from "./components/Toasts";
@@ -51,6 +52,7 @@ export function App() {
           <HomeScreen />
         )}
       </main>
+      <DebugPanel />
       <Toasts />
       <ReplacedOverlay />
     </>

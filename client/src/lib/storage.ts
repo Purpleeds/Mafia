@@ -9,9 +9,24 @@ const SESSION_PREFIX = "mafia:session:";
 const ACTIVE_KEY = "mafia:active";
 const PROFILE_KEY = "mafia:profile";
 
+/**
+ * Normally your seat is remembered per browser (localStorage), so closing the tab
+ * and coming back resumes it. In development it is remembered per tab
+ * (sessionStorage) instead, so several tabs of one browser can be different players.
+ */
+let perTab = false;
+
+export function setPerTabStorage(on: boolean): void {
+  perTab = on;
+}
+
+function area(): Storage {
+  return perTab ? window.sessionStorage : window.localStorage;
+}
+
 function read(key: string): unknown {
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = area().getItem(key);
     return raw === null ? null : (JSON.parse(raw) as unknown);
   } catch {
     return null;
@@ -20,7 +35,7 @@ function read(key: string): unknown {
 
 function write(key: string, value: unknown): void {
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    area().setItem(key, JSON.stringify(value));
   } catch {
     // Storage unavailable: the game still works, it just won't survive a refresh.
   }
@@ -28,7 +43,7 @@ function write(key: string, value: unknown): void {
 
 function remove(key: string): void {
   try {
-    window.localStorage.removeItem(key);
+    area().removeItem(key);
   } catch {
     // ignore
   }
@@ -59,7 +74,7 @@ export function saveSession(info: SessionInfo): void {
 
 export function forgetSession(roomCode: string): void {
   remove(SESSION_PREFIX + roomCode);
-  if (loadActiveRoom() === roomCode) remove(ACTIVE_KEY);
+  if (normalizeRoomCode(read(ACTIVE_KEY)) === roomCode) remove(ACTIVE_KEY);
 }
 
 /** The room you were last in, if its session is still saved. */

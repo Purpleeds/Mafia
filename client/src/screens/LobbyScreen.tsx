@@ -8,6 +8,7 @@ import { LeaveRoomButton } from "../components/LeaveRoomButton";
 import { PlayerList, SpectatorList } from "../components/PlayerList";
 import { ProfileEditor } from "../components/ProfileEditor";
 import { RoomHeader } from "../components/RoomHeader";
+import { DevBotsCard } from "../components/DevTools";
 import { PasswordEditor, SettingsEditor } from "../components/SettingsEditor";
 import { SettingsSummary } from "../components/SettingsSummary";
 import { useAction } from "../lib/useAction";
@@ -93,6 +94,7 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
               <>
                 <SettingsEditor settings={view.settings} playerCount={playerCount} />
                 <PasswordEditor hasPassword={room.hasPassword} />
+                <DevBotsCard playerCount={playerCount} />
               </>
             ) : (
               <SettingsSummary settings={view.settings} playerCount={playerCount} />

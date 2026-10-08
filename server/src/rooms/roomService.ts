@@ -255,9 +255,16 @@ export class RoomService {
   }
 
   /** Joins as a player in the lobby, or as a spectator once a game has started. */
-  joinRoom(code: string, name: string, avatar: Avatar, password?: string): Promise<ServiceResult<SessionInfo>> {
+  joinRoom(
+    code: string,
+    name: string,
+    avatar: Avatar,
+    password?: string,
+    /** Server-side callers (the dev bots) that don't hold the room password. */
+    trusted = false,
+  ): Promise<ServiceResult<SessionInfo>> {
     return this.withRoom(code, async (room) => {
-      if (room.passwordHash !== null) {
+      if (room.passwordHash !== null && !trusted) {
         if (!password) return fail("PASSWORD_REQUIRED", "This room is private. Enter its password to join.");
         if (!(await verifyPassword(password, room.passwordHash))) {
           this.logger.warn("room.wrong_password", { room: code });

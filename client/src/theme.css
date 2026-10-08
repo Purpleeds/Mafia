@@ -344,3 +344,28 @@ h1, h2, h3,
 .reaction-bar { display: flex; gap: 8px; justify-content: space-between; }
 .reaction-btn { flex: 1; min-width: var(--tap); padding: 0; }
 .chat-reaction { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+
+/* ------------------------------------------------------------------ development tools (never shown in production) */
+.dev-card { border-style: dashed; }
+.dev-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.debug-panel { position: fixed; left: 8px; bottom: 8px; z-index: 80; max-width: calc(100vw - 16px); }
+.debug-toggle { opacity: 0.85; }
+.debug-body {
+  display: flex; flex-direction: column; gap: 8px;
+  width: min(760px, calc(100vw - 16px)); height: min(70dvh, 620px);
+  padding: 10px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface-solid); box-shadow: var(--shadow); text-align: left;
+}
+.debug-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.debug-bar .field-hint { margin: 0; flex: 1 1 200px; }
+.debug-check { display: inline-flex; gap: 4px; align-items: center; font-size: 0.85rem; }
+.debug-table { border-collapse: collapse; font-size: 0.82rem; }
+.debug-table th, .debug-table td { padding: 2px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.debug-table .is-out { opacity: 0.55; }
+.debug-json { flex: 1; overflow: auto; font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.45; }
+.json-children { margin-left: 14px; border-left: 1px solid var(--border); padding-left: 8px; }
+.json-key { color: var(--accent); }
+.json-string { color: #9fd18b; }
+.json-number, .json-boolean { color: #e8c36a; }
+.json-null, .json-summary { color: var(--muted, #8a8fb0); }
+.json-node > summary { cursor: pointer; }

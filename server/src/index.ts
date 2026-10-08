@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMafiaServer } from "./app.js";
+import { devToolsEnabled } from "./dev/devTools.js";
 import { createConsoleLogger } from "./logger.js";
 
 const logger = createConsoleLogger();
@@ -19,13 +20,14 @@ const server = createMafiaServer({
   clientDist: path.resolve(here, "../../client/dist"),
   logger,
   trustProxyHops,
+  devTools: devToolsEnabled(),
 });
 
 // Re-arm timers for rooms a persistent store kept across a restart (none with the in-memory store).
 void server.service.recover().catch((err: unknown) => logger.error("rooms.recover_failed", {}, err));
 
 server.httpServer.listen(port, "0.0.0.0", () => {
-  logger.info("server.listening", { port, node: process.version, trustProxyHops });
+  logger.info("server.listening", { port, node: process.version, trustProxyHops, devTools: devToolsEnabled() });
 });
 
 process.on("unhandledRejection", (reason) => logger.error("process.unhandled_rejection", {}, reason));
