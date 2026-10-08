@@ -55,7 +55,7 @@ export function parseEmpty(raw: unknown): Parsed<Record<string, never>> {
 /** Avatars are copied field by field so nothing else rides along. */
 function avatarField(obj: Record<string, unknown>): Avatar | null {
   const value = obj.avatar;
-  return isAvatar(value) ? { color: value.color, icon: value.icon } : null;
+  return isAvatar(value) ? { color: value.color, seed: value.seed } : null;
 }
 
 /** Optional string: undefined if absent, null if present but invalid. */
@@ -75,7 +75,7 @@ export function parseCreateRoom(raw: unknown): Parsed<CreateRoomPayload> {
   const name = stringField(raw, "name", MAX_NAME_INPUT);
   if (name === null) return bad("name must be a short string.");
   const avatar = avatarField(raw);
-  if (!avatar) return bad("Pick an avatar colour and icon.");
+  if (!avatar) return bad("Pick an avatar colour and look.");
   const customCode = optionalString(raw, "customCode", MAX_CODE_INPUT);
   if (customCode === null) return bad("customCode must be 4–8 letters or numbers.");
   const password = optionalString(raw, "password", MAX_PASSWORD_INPUT);
@@ -100,7 +100,7 @@ export function parseJoinRoom(raw: unknown): Parsed<JoinRoomPayload> {
   const name = stringField(raw, "name", MAX_NAME_INPUT);
   if (name === null) return bad("name must be a short string.");
   const avatar = avatarField(raw);
-  if (!avatar) return bad("Pick an avatar colour and icon.");
+  if (!avatar) return bad("Pick an avatar colour and look.");
   const password = optionalString(raw, "password", MAX_PASSWORD_INPUT);
   if (password === null) return bad("password must be a string.");
   const value: JoinRoomPayload = { roomCode, name, avatar };
@@ -127,7 +127,7 @@ export function parseUpdateProfile(raw: unknown): Parsed<UpdateProfilePayload> {
   }
   if (raw.avatar !== undefined) {
     const avatar = avatarField(raw);
-    if (!avatar) return bad("Pick an avatar colour and icon.");
+    if (!avatar) return bad("Pick an avatar colour and look.");
     value.avatar = avatar;
   }
   if (value.name === undefined && value.avatar === undefined) return bad("Nothing to change.");

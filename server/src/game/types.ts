@@ -94,6 +94,8 @@ export interface DeathRecord {
 export interface NightReport {
   round: number;
   deaths: DeathRecord[];
+  /** The Doctor protected the Mafia's target. Public only if the host announces saves. */
+  saved: boolean;
 }
 
 export interface VoteReport extends RoundSummary {

@@ -127,15 +127,43 @@ describe("Doctor", () => {
     expect(g.state.night.protect).toBe("p4");
   });
 
-  it("doesn't announce the save: a saved night looks like a quiet one", () => {
-    const saved = gameWithRoles(R7);
+  it("announces that a save happened (not who) when the host allows it", () => {
+    const g = gameWithRoles(R7);
+    runNight(g, [
+      ["p1", "p4"],
+      ["p2", "p4"],
+    ]);
+    const view = getGameView(g.state, "p6").nightReport;
+    expect(view).toEqual({ round: 1, deaths: [], saved: true });
+    expect(JSON.stringify(getGameView(g.state, "p6"))).not.toContain('"protectedId":"p4"');
+  });
+
+  it("keeps a save secret when saves aren't announced: it looks like a quiet night", () => {
+    const saved = gameWithRoles(R7, { settings: { announceSaves: false } });
     runNight(saved, [
       ["p1", "p4"],
       ["p2", "p4"],
     ]);
-    const quiet = gameWithRoles(R7);
+    const quiet = gameWithRoles(R7, { settings: { announceSaves: false } });
     runNight(quiet, []);
-    expect(saved.state.nightReport).toEqual(quiet.state.nightReport);
+    expect(getGameView(saved.state, "p6").nightReport).toEqual(getGameView(quiet.state, "p6").nightReport);
+    expect(getGameView(saved.state, "p6").nightReport?.saved).toBe(false);
+  });
+
+  it("isn't a save when the Doctor protected someone else", () => {
+    const g = gameWithRoles(R7);
+    runNight(g, [
+      ["p1", "p4"],
+      ["p2", "p5"],
+    ]);
+    expect(getGameView(g.state, "p6").nightReport?.saved).toBe(false);
+  });
+
+  it("shows the Doctor (only) who they protected", () => {
+    const g = gameWithRoles(R7);
+    runNight(g, [["p2", "p5"]]);
+    expect(getGameView(g.state, "p2").you?.protectedId).toBe("p5");
+    for (const other of ["p1", "p3", "p4", "p5"]) expect(getGameView(g.state, other).you?.protectedId).toBeNull();
   });
 });
 

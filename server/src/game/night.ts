@@ -171,7 +171,7 @@ export function resolveNight(state: GameState, env: GameEnv): void {
 
   state.doctorLastProtectedId = night.protect;
   const deaths = killPlayers(state, initial);
-  state.nightReport = { round: state.round, deaths };
+  state.nightReport = { round: state.round, deaths, saved: outcome === "saved" };
   state.history.push({
     round: state.round,
     night: {

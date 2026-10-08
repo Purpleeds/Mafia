@@ -73,7 +73,7 @@ export class Game {
   }
 }
 
-export const AVATAR: Avatar = { color: "teal", icon: "fox" };
+export const AVATAR: Avatar = { color: "teal", seed: "fox" };
 
 export function ids(n: number): string[] {
   return Array.from({ length: n }, (_, i) => `p${i + 1}`);

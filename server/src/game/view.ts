@@ -61,8 +61,13 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     connection: p.connected ? "online" : "offline",
   }));
 
+  // A save stays secret unless the host announces saves; then everyone learns that one happened, not who.
   const nightReport = state.nightReport
-    ? { round: state.nightReport.round, deaths: deathViews(state.nightReport.deaths) }
+    ? {
+        round: state.nightReport.round,
+        deaths: deathViews(state.nightReport.deaths),
+        saved: state.settings.announceSaves && state.nightReport.saved,
+      }
     : null;
 
   // Who voted for whom is only public if the host allows it; the counts always are.
@@ -165,6 +170,7 @@ function buildYou(state: GameState, viewer: PlayerState): YouView {
     teammateIds,
     loverIds: knowsLovers && state.lovers ? [...state.lovers] : null,
     investigations: viewer.role === "detective" ? state.investigations.map((i) => ({ ...i })) : [],
+    protectedId: viewer.role === "doctor" ? state.doctorLastProtectedId : null,
     nightAction: state.phase === "NIGHT" ? buildNightAction(state, viewer) : null,
     chat: chatAccess(state, viewer.id),
   };
@@ -183,6 +189,7 @@ function spectatorYou(state: GameState, spectator: SpectatorState): YouView {
     teammateIds: [],
     loverIds: state.phase === "GAME_OVER" && state.lovers ? [...state.lovers] : null,
     investigations: [],
+    protectedId: null,
     nightAction: null,
     chat: chatAccess(state, spectator.id),
   };

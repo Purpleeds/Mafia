@@ -68,7 +68,7 @@ describe("chat access in the view", () => {
 
   it("gives spectators the graveyard", () => {
     const g = gameWithRoles(R7);
-    g.ok({ type: "JOIN", playerId: "late", name: "Late", avatar: { color: "red", icon: "fox" } });
+    g.ok({ type: "JOIN", playerId: "late", name: "Late", avatar: { color: "red", seed: "fox" } });
     expect(getGameView(g.state, "late").you?.chat).toEqual({ write: ["graveyard"], read: ["public", "graveyard"] });
   });
 });
@@ -82,7 +82,7 @@ describe("game-over timeline", () => {
     g.nightAct("p2", "p5");
     g.nightAct("p3", "p1");
     expect(getGameView(g.state, "p6").timeline).toEqual([]);
-    expect(JSON.stringify(getGameView(g.state, "p6"))).not.toContain("protectedId");
+    expect(JSON.stringify(getGameView(g.state, "p6"))).not.toMatch(/"protectedId":"/);
   });
 
   it("records each night's secrets and each vote, and shows them at game over", () => {

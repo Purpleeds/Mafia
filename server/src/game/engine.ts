@@ -132,7 +132,7 @@ function ensureHost(s: GameState, fromIndex?: number): void {
 function join(s: GameState, playerId: string, rawName: string, avatar: Avatar): GameError | null {
   if (!isValidPlayerId(playerId)) return err("INVALID_ID", "Invalid player id.");
   if (findMember(s, playerId)) return err("ALREADY_JOINED", "You are already in this room.");
-  if (!isAvatar(avatar)) return err("INVALID_AVATAR", "Pick an avatar colour and icon.");
+  if (!isAvatar(avatar)) return err("INVALID_AVATAR", "Pick an avatar colour and look.");
   const checked = checkName(s, rawName);
   if ("code" in checked) return checked;
 
@@ -141,7 +141,7 @@ function join(s: GameState, playerId: string, rawName: string, avatar: Avatar): 
     s.players.push({
       id: playerId,
       name: checked.name,
-      avatar: { color: avatar.color, icon: avatar.icon },
+      avatar: { color: avatar.color, seed: avatar.seed },
       role: null,
       alive: true,
       connected: true,
@@ -154,7 +154,7 @@ function join(s: GameState, playerId: string, rawName: string, avatar: Avatar): 
 
   // A game is running (or just finished): watch until the next one.
   if (s.spectators.length >= MAX_SPECTATORS) return err("ROOM_FULL", "This room can't take any more spectators.");
-  s.spectators.push({ id: playerId, name: checked.name, avatar: { color: avatar.color, icon: avatar.icon }, connected: true });
+  s.spectators.push({ id: playerId, name: checked.name, avatar: { color: avatar.color, seed: avatar.seed }, connected: true });
   return null;
 }
 
@@ -212,7 +212,7 @@ function updateProfile(s: GameState, playerId: string, rawName?: string, avatar?
   if (s.phase !== "LOBBY") return err("WRONG_PHASE", "You can change your name and avatar in the lobby.");
   const member = findMember(s, playerId);
   if (!member) return err("NOT_IN_GAME", "You are not in this room.");
-  if (avatar !== undefined && !isAvatar(avatar)) return err("INVALID_AVATAR", "Pick an avatar colour and icon.");
+  if (avatar !== undefined && !isAvatar(avatar)) return err("INVALID_AVATAR", "Pick an avatar colour and look.");
   let name = member.name;
   if (rawName !== undefined) {
     const checked = checkName(s, rawName, playerId);
@@ -220,7 +220,7 @@ function updateProfile(s: GameState, playerId: string, rawName?: string, avatar?
     name = checked.name;
   }
   member.name = name;
-  if (avatar !== undefined) member.avatar = { color: avatar.color, icon: avatar.icon };
+  if (avatar !== undefined) member.avatar = { color: avatar.color, seed: avatar.seed };
   return null;
 }
 

@@ -91,6 +91,8 @@ export interface GameSettings {
   revealRoleOnDeath: boolean;
   /** Show who voted for whom (live, and in the results). Vote counts are always shown. */
   showVotes: boolean;
+  /** Tell everyone when the Doctor saved someone (without saying who). */
+  announceSaves: boolean;
 }
 
 export interface SettingsPatch {
@@ -101,6 +103,7 @@ export interface SettingsPatch {
   tieRule?: TieRule;
   revealRoleOnDeath?: boolean;
   showVotes?: boolean;
+  announceSaves?: boolean;
 }
 
 export const TIMER_LIMITS: Record<keyof TimerSettings, { min: number; max: number }> = {
@@ -130,6 +133,7 @@ export function defaultSettings(): GameSettings {
     tieRule: "no_elimination",
     revealRoleOnDeath: true,
     showVotes: true,
+    announceSaves: true,
   };
 }
 
@@ -173,6 +177,8 @@ export interface DeathView {
 export interface NightReportView {
   round: number;
   deaths: DeathView[];
+  /** The Doctor saved the Mafia's target. Only ever true when the host announces saves. */
+  saved: boolean;
 }
 
 export interface VoteRoundSummaryView {
@@ -261,6 +267,8 @@ export interface YouView {
   loverIds: [string, string] | null;
   /** Detective only. */
   investigations: InvestigationView[];
+  /** Doctor only: who you protected on the last night (your own choice). */
+  protectedId: string | null;
   nightAction: NightActionView | null;
   chat: ChatAccess;
 }

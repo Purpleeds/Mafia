@@ -41,26 +41,28 @@ export const AVATAR_COLORS = [
 ] as const;
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
 
-export const AVATAR_ICONS = [
-  "fox", "cat", "owl", "frog", "bear", "rabbit", "panda", "penguin",
-  "octopus", "unicorn", "dragon", "robot", "lion", "alien", "cactus", "mushroom",
-] as const;
-export type AvatarIcon = (typeof AVATAR_ICONS)[number];
+/** Up to 16 lowercase letters/digits. The client draws a character (hat, face, hair...) from it. */
+export const AVATAR_SEED_MAX_LENGTH = 16;
+const AVATAR_SEED = /^[a-z0-9]{1,16}$/;
 
+export function isAvatarSeed(value: unknown): value is string {
+  return typeof value === "string" && AVATAR_SEED.test(value);
+}
+
+/**
+ * A player's look: a colour they pick, plus a seed that procedurally decides
+ * their character's hat, face and hair. The same seed always draws the same
+ * character, so players keep their look.
+ */
 export interface Avatar {
   color: AvatarColor;
-  icon: AvatarIcon;
+  seed: string;
 }
 
 export function isAvatar(value: unknown): value is Avatar {
   if (typeof value !== "object" || value === null) return false;
-  const { color, icon } = value as Record<string, unknown>;
-  return (
-    typeof color === "string" &&
-    typeof icon === "string" &&
-    (AVATAR_COLORS as readonly string[]).includes(color) &&
-    (AVATAR_ICONS as readonly string[]).includes(icon)
-  );
+  const { color, seed } = value as Record<string, unknown>;
+  return typeof color === "string" && (AVATAR_COLORS as readonly string[]).includes(color) && isAvatarSeed(seed);
 }
 
 // ---------------------------------------------------------------- room codes

@@ -5,7 +5,7 @@ import { getGameView } from "./view.js";
 import { AVATAR, R7, gameWithRoles, lobby, runNight, type Game } from "./testing/harness.js";
 
 const spectate = (g: Game, id = "late", name = "Late Lou") =>
-  g.ok({ type: "JOIN", playerId: id, name, avatar: { color: "pink", icon: "owl" } });
+  g.ok({ type: "JOIN", playerId: id, name, avatar: { color: "pink", seed: "owl" } });
 
 describe("spectators", () => {
   it("are who joins once a game has started", () => {
@@ -66,7 +66,7 @@ describe("spectators", () => {
     g.advanceTo("GAME_OVER");
     g.ok({ type: "RESTART", playerId: "p1" });
     expect(g.state.players.map((p) => p.id)).toEqual(["p1", "p2", "p3", "p4", "p5", "p6", "p7", "s1"]);
-    expect(g.player("s1")).toMatchObject({ role: null, alive: true, kicked: false, avatar: { color: "pink", icon: "owl" } });
+    expect(g.player("s1")).toMatchObject({ role: null, alive: true, kicked: false, avatar: { color: "pink", seed: "owl" } });
     expect(g.state.spectators).toEqual([]); // s2 was away, so dropped
   });
 
@@ -222,13 +222,13 @@ describe("host", () => {
 describe("profiles", () => {
   it("can be changed in the lobby", () => {
     const g = lobby(5);
-    g.ok({ type: "UPDATE_PROFILE", playerId: "p2", name: "Bea", avatar: { color: "red", icon: "dragon" } });
-    expect(g.player("p2")).toMatchObject({ name: "Bea", avatar: { color: "red", icon: "dragon" } });
+    g.ok({ type: "UPDATE_PROFILE", playerId: "p2", name: "Bea", avatar: { color: "red", seed: "dragon" } });
+    expect(g.player("p2")).toMatchObject({ name: "Bea", avatar: { color: "red", seed: "dragon" } });
     g.ok({ type: "UPDATE_PROFILE", playerId: "p2", name: "bea" }); // same name, different case: fine for yourself
     expect(g.fail({ type: "UPDATE_PROFILE", playerId: "p3", name: "BEA" })).toBe("NAME_TAKEN");
     expect(g.fail({ type: "UPDATE_PROFILE", playerId: "p3", name: "x".repeat(17) })).toBe("INVALID_NAME");
     expect(
-      g.fail({ type: "UPDATE_PROFILE", playerId: "p3", avatar: { color: "red", icon: "yeti" } as unknown as typeof AVATAR }),
+      g.fail({ type: "UPDATE_PROFILE", playerId: "p3", avatar: { color: "red", seed: "NOPE!" } as unknown as typeof AVATAR }),
     ).toBe("INVALID_AVATAR");
   });
 

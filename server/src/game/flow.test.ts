@@ -31,7 +31,13 @@ describe("lobby", () => {
 
   it("needs a real avatar", () => {
     const g = new Game();
-    const bad = [{ color: "plaid", icon: "fox" }, { color: "teal", icon: "dinosaur" }, null];
+    const bad = [
+      { color: "plaid", seed: "fox" },
+      { color: "teal", seed: "Has Spaces" },
+      { color: "teal", seed: "x".repeat(17) },
+      { color: "teal" },
+      null,
+    ];
     for (const avatar of bad) {
       expect(
         g.fail({ type: "JOIN", playerId: "a", name: "Ana", avatar: avatar as unknown as typeof AVATAR }),

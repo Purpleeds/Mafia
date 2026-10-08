@@ -47,6 +47,10 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
         if (typeof value !== "boolean") return bad("showVotes must be true or false.");
         next.showVotes = value;
         break;
+      case "announceSaves":
+        if (typeof value !== "boolean") return bad("announceSaves must be true or false.");
+        next.announceSaves = value;
+        break;
       case "mafiaCount":
         if (value === "auto") {
           next.mafiaCount = "auto";

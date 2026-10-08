@@ -18,7 +18,7 @@ import { DEFAULT_RATE_LIMITS } from "./socket/rateLimiter.js";
 
 type AckOf<E extends ClientEventName> = Parameters<Parameters<ClientToServerEvents[E]>[1]>[0];
 
-const AVATAR: Avatar = { color: "violet", icon: "owl" };
+const AVATAR: Avatar = { color: "violet", seed: "owl" };
 
 /** A browser stand-in that records everything the server sends it. */
 class TestClient {
@@ -347,9 +347,9 @@ describe("over real sockets", () => {
 
   it("lets players change their nickname and avatar in the lobby", async () => {
     const [host, guest] = (await lobbyOf(2)) as [TestClient, TestClient];
-    expectOk(await guest.call("player:updateProfile", { name: "Gwen", avatar: { color: "red", icon: "dragon" } }));
+    expectOk(await guest.call("player:updateProfile", { name: "Gwen", avatar: { color: "red", seed: "dragon" } }));
     await waitFor(() => host.state?.view.players[1]?.name === "Gwen", "renamed");
-    expect(host.view.players[1]?.avatar).toEqual({ color: "red", icon: "dragon" });
+    expect(host.view.players[1]?.avatar).toEqual({ color: "red", seed: "dragon" });
     expectError(await guest.call("player:updateProfile", { name: "host" }), "NAME_TAKEN");
   });
 

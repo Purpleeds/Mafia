@@ -3,7 +3,7 @@ import type { Avatar, Role } from "@mafia/shared";
 import { MemoryRoomStore } from "./roomStore.js";
 import { makeService } from "./testing/fakes.js";
 
-const AVATAR: Avatar = { color: "teal", icon: "fox" };
+const AVATAR: Avatar = { color: "teal", seed: "fox" };
 type Env = ReturnType<typeof makeService>;
 
 function must<T>(result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }): T {

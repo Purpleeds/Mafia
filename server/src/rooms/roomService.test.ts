@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Avatar, Role } from "@mafia/shared";
 import { makeService } from "./testing/fakes.js";
 
-const AVATAR: Avatar = { color: "teal", icon: "fox" };
+const AVATAR: Avatar = { color: "teal", seed: "fox" };
 
 type Env = ReturnType<typeof makeService>;
 

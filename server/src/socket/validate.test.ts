@@ -15,7 +15,7 @@ import {
   parseVote,
 } from "./validate.js";
 
-const avatar = { color: "teal", icon: "fox" };
+const avatar = { color: "teal", seed: "fox" };
 
 describe("payload validation", () => {
   it("rejects non-objects everywhere they need data", () => {
@@ -57,7 +57,8 @@ describe("payload validation", () => {
 
   it("requires a valid avatar to create or join, and copies only its fields", () => {
     expect(parseCreateRoom({ name: "A" }).ok).toBe(false);
-    expect(parseCreateRoom({ name: "A", avatar: { color: "teal", icon: "t-rex" } }).ok).toBe(false);
+    expect(parseCreateRoom({ name: "A", avatar: { color: "teal", icon: "fox" } }).ok).toBe(false);
+    expect(parseCreateRoom({ name: "A", avatar: { color: "teal", seed: "Upper" } }).ok).toBe(false);
     const parsed = parseCreateRoom({ name: "A", avatar: { ...avatar, extra: "x" }, customCode: "PARTY", password: "pw1" });
     expect(parsed).toEqual({ ok: true, value: { name: "A", avatar, customCode: "PARTY", password: "pw1" } });
     expect(parseJoinRoom({ roomCode: "ABCD", name: "A", avatar, password: 5 }).ok).toBe(false);
@@ -66,7 +67,7 @@ describe("payload validation", () => {
   it("checks profile, target and password payloads", () => {
     expect(parseUpdateProfile({}).ok).toBe(false);
     expect(parseUpdateProfile({ name: "New" })).toEqual({ ok: true, value: { name: "New" } });
-    expect(parseUpdateProfile({ avatar: { color: "nope", icon: "fox" } }).ok).toBe(false);
+    expect(parseUpdateProfile({ avatar: { color: "nope", seed: "fox" } }).ok).toBe(false);
     expect(parseTargetPlayer({ playerId: "p1" })).toEqual({ ok: true, value: { playerId: "p1" } });
     expect(parseTargetPlayer({ playerId: 1 }).ok).toBe(false);
     expect(parseSetPassword({ password: null })).toEqual({ ok: true, value: { password: null } });
