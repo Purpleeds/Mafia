@@ -1,4 +1,10 @@
-import type { ChatHistoryPayload, ChatMessage, GameStatePayload, RemovedPayload } from "@mafia/shared";
+import type {
+  ChatHistoryPayload,
+  ChatMessage,
+  GameStatePayload,
+  NarratorRequestPayload,
+  RemovedPayload,
+} from "@mafia/shared";
 import { mulberry32 } from "../../game/index.js";
 import { createMemoryLogger } from "../../logger.js";
 import { MemoryRoomStore } from "../roomStore.js";
@@ -9,7 +15,8 @@ export type Sent =
   | { kind: "state"; room: string; player: string; payload: GameStatePayload }
   | { kind: "chat"; room: string; player: string; payload: ChatMessage }
   | { kind: "history"; room: string; player: string; payload: ChatHistoryPayload }
-  | { kind: "removed"; room: string; player: string; payload: RemovedPayload };
+  | { kind: "removed"; room: string; player: string; payload: RemovedPayload }
+  | { kind: "narration"; room: string; player: string; payload: NarratorRequestPayload };
 
 export class FakeBroadcaster implements Broadcaster {
   sent: Sent[] = [];
@@ -24,6 +31,13 @@ export class FakeBroadcaster implements Broadcaster {
   }
   removed(room: string, player: string, payload: RemovedPayload) {
     this.sent.push({ kind: "removed", room, player, payload });
+  }
+  narrationRequest(room: string, player: string, payload: NarratorRequestPayload) {
+    this.sent.push({ kind: "narration", room, player, payload });
+  }
+  /** Narrator requests, and who they were sent to. */
+  narrationRequests(): Array<{ player: string; payload: NarratorRequestPayload }> {
+    return this.sent.flatMap((s) => (s.kind === "narration" ? [{ player: s.player, payload: s.payload }] : []));
   }
   to(player: string): Sent[] {
     return this.sent.filter((s) => s.player === player);

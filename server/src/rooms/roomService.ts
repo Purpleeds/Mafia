@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import {
   MAX_PLAYERS,
   MAX_SPECTATORS,
+  NARRATION_TIMEOUT_MS,
+  censorProfanity,
   containsProfanity,
+  isChatFiltered,
   validateCustomRoomCode,
   validateRoomPassword,
   type Avatar,
@@ -13,6 +16,7 @@ import {
   type ErrorPayload,
   type GameStatePayload,
   type GameView,
+  type NarratorRequestPayload,
   type RemovedPayload,
   type RemovedReason,
   type RoomInfo,
@@ -26,11 +30,14 @@ import {
   createLobby,
   cryptoRng,
   getGameView,
+  nextWake,
   type GameAction,
   type GameState,
+  type NarrationFallback,
   type Rng,
 } from "../game/index.js";
 import type { Logger } from "../logger.js";
+import { narrationFacts } from "../narration/facts.js";
 import { MAX_CHAT_HISTORY, canSeeInHistory, sanitizeChatText } from "./chatRules.js";
 import { digest, generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
 import { KeyedMutex } from "./keyedMutex.js";
@@ -46,12 +53,17 @@ export interface Broadcaster {
   chatHistory(roomCode: string, playerId: string, payload: ChatHistoryPayload): void;
   /** Tell the member they're out of the room and stop sending them anything from it. */
   removed(roomCode: string, playerId: string, payload: RemovedPayload): void;
+  /** Ask the host's browser to write a narration. Only ever sent to the host. */
+  narrationRequest(roomCode: string, playerId: string, payload: NarratorRequestPayload): void;
 }
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ErrorPayload };
 
-/** Actions a member may trigger (JOIN goes through joinRoom, TICK comes from the timer). */
-export type PlayerAction = Exclude<GameAction, { type: "JOIN" } | { type: "TICK" }>;
+/**
+ * Actions a member may trigger (JOIN goes through joinRoom, TICK comes from the
+ * timer, NARRATE only through submitNarration, which checks it is the host's answer).
+ */
+export type PlayerAction = Exclude<GameAction, { type: "JOIN" } | { type: "TICK" } | { type: "NARRATE" }>;
 
 export interface CreateRoomOptions {
   customCode?: string;
@@ -129,6 +141,8 @@ export class RoomService {
   private readonly mutex = new KeyedMutex();
   /** ownerKey -> codes of their open rooms (rebuilt by recover()). */
   private readonly roomsByOwner = new Map<string, Set<string>>();
+  /** room code -> id of the narration the host's browser has been asked to write. */
+  private readonly narrationAsked = new Map<string, string>();
 
   constructor(options: RoomServiceOptions) {
     this.store = options.store;
@@ -343,6 +357,12 @@ export class RoomService {
 
   /** Applies a member's action. The engine checks phase, host, life, role and target. */
   act(code: string, action: PlayerAction): Promise<ServiceResult<null>> {
+    // The types already exclude these; checking at run time too means no caller can force a timer tick,
+    // a join, or a narration through here.
+    const type: string = action.type;
+    if (type === "NARRATE" || type === "TICK" || type === "JOIN") {
+      return Promise.resolve(fail("BAD_REQUEST", "That isn't something a player can do."));
+    }
     return this.withRoom(code, async (room) => {
       const prev = this.apply(room, action);
       if (!prev.ok) return prev;
@@ -361,8 +381,10 @@ export class RoomService {
       if (!canWrite(state, memberId, channel)) {
         return fail("CHAT_NOT_ALLOWED", "You can't send messages there right now.");
       }
-      const text = sanitizeChatText(rawText);
-      if (text === null) return fail("BAD_REQUEST", "Messages must be 1–300 characters.");
+      const cleaned = sanitizeChatText(rawText);
+      if (cleaned === null) return fail("BAD_REQUEST", "Messages must be 1–300 characters.");
+      // Safe Mode always masks rude words; in Normal Mode it is the host's choice.
+      const text = isChatFiltered(state.settings) ? censorProfanity(cleaned) : cleaned;
 
       const message: ChatMessage = {
         // Random ids: a shared counter would reveal how much hidden-channel chat happened.
@@ -400,6 +422,21 @@ export class RoomService {
     });
   }
 
+  /**
+   * The host's browser answered a narrator:request. Only the host's answer to the
+   * announcement that is waiting counts; anything else (a late answer after the
+   * fallback, an old request) is ignored. The engine checks the text itself.
+   */
+  submitNarration(code: string, memberId: string, requestId: string, text: string | null): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (room.state.hostId !== memberId) return fail("NOT_HOST", "Only the host can write the narration.");
+      const narration = room.state.narration;
+      if (!narration || narration.status !== "pending" || narration.id !== requestId) return ok(null);
+      await this.finishNarration(room, text, text === null ? "ai_failed" : undefined);
+      return ok(null);
+    });
+  }
+
   /** The phase timer fired. */
   async handleTimer(code: string): Promise<void> {
     try {
@@ -407,7 +444,11 @@ export class RoomService {
         const prev = this.apply(room, { type: "TICK" });
         if (!prev.ok) return prev;
         const before = prev.value;
-        if (before.phase === room.state.phase && before.phaseEndsAt === room.state.phaseEndsAt) {
+        if (
+          before.phase === room.state.phase &&
+          before.phaseEndsAt === room.state.phaseEndsAt &&
+          before.narration?.status === room.state.narration?.status
+        ) {
           // Fired a little early: nothing changed, so just wait for the real deadline.
           this.scheduleTimer(room);
           return ok(null);
@@ -572,6 +613,9 @@ export class RoomService {
     }
     for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
 
+    // A result was just announced: ask the host's browser for the narration (or settle for a ready-made line).
+    await this.requestNarration(room);
+
     // Someone just eliminated can now read the graveyard: give them its history (and drop Mafia chat).
     for (const p of state.players) {
       const wasAlive = prev.players.some((q) => q.id === p.id && q.alive);
@@ -636,13 +680,57 @@ export class RoomService {
   }
 
   private scheduleTimer(room: Room): void {
-    const { phaseEndsAt } = room.state;
-    if (phaseEndsAt === null) this.scheduler.clear(room.code);
-    else this.scheduler.set(room.code, phaseEndsAt, () => void this.handleTimer(room.code));
+    const wake = nextWake(room.state);
+    if (wake === null) this.scheduler.clear(room.code);
+    else this.scheduler.set(room.code, wake, () => void this.handleTimer(room.code));
+  }
+
+  /**
+   * When an announcement is waiting for the narrator, sends the host's browser
+   * the public facts to write it from. With no host connected there is nobody to
+   * ask, so a ready-made line is used straight away.
+   */
+  private async requestNarration(room: Room): Promise<void> {
+    const { state } = room;
+    const narration = state.narration;
+    if (!narration || narration.status !== "pending") return;
+    if (this.narrationAsked.get(room.code) === narration.id) return;
+    this.narrationAsked.set(room.code, narration.id);
+
+    const host = state.hostId === null ? undefined : state.players.find((p) => p.id === state.hostId);
+    const facts = narrationFacts(state);
+    if (!host || !host.connected || !facts) {
+      await this.finishNarration(room, null, "host_away");
+      return;
+    }
+    this.broadcaster.narrationRequest(room.code, host.id, {
+      requestId: narration.id,
+      facts,
+      timeoutMs: NARRATION_TIMEOUT_MS,
+    });
+    this.logger.info("narration.requested", { room: room.code, kind: narration.kind, round: narration.round, mode: facts.mode });
+  }
+
+  /** Settles the waiting narration with the AI's text (or a ready-made line) and tells everyone. */
+  private async finishNarration(room: Room, candidate: string | null, reason?: NarrationFallback): Promise<void> {
+    const prev = this.apply(room, { type: "NARRATE", candidate, reason });
+    if (!prev.ok) return;
+    await this.commit(room, prev.value, { activity: false });
+    const narration = room.state.narration;
+    if (narration?.status === "ready") {
+      this.logger.info("narration.ready", {
+        room: room.code,
+        kind: narration.kind,
+        round: narration.round,
+        source: narration.source,
+        fallback: narration.fallback ?? undefined,
+      });
+    }
   }
 
   private async close(room: Room, reason: "empty" | "idle", alsoNotify: string[] = []): Promise<void> {
     this.scheduler.clear(room.code);
+    this.narrationAsked.delete(room.code);
     if (room.ownerKey) {
       const codes = this.roomsByOwner.get(room.ownerKey);
       codes?.delete(room.code);

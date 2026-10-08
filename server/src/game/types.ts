@@ -41,6 +41,33 @@ export interface GameState {
   /** Decided when a result is announced; takes effect when that results phase ends. */
   pendingWinner: Winner | null;
   winner: Winner | null;
+  /** The narrator's announcement after the latest night or vote (see narrate.ts). */
+  narration: NarrationState | null;
+  /** Ids of the ready-made lines already used in this game, so none repeats. */
+  usedTemplates: string[];
+}
+
+/** Why a ready-made line was used instead of an AI-written one. Server only (logs). */
+export type NarrationFallback =
+  | "ai_off"
+  | "host_away"
+  | "ai_failed"
+  | "timeout"
+  | `rejected_${string}`;
+
+export interface NarrationState {
+  /** Unguessable id; the host's browser must quote it when it answers. */
+  id: string;
+  kind: "night" | "vote";
+  round: number;
+  /** pending: the host's browser is still writing it (or the server hasn't asked yet). */
+  status: "pending" | "ready";
+  /** Epoch ms after which a pending narration is replaced by a ready-made line. */
+  deadline: number;
+  text: string | null;
+  source: "ai" | "template" | null;
+  /** Why a ready-made line was used (null for AI text or while pending). */
+  fallback: NarrationFallback | null;
 }
 
 export interface PlayerState {
@@ -139,6 +166,11 @@ export type GameAction =
   | { type: "ACK_ROLE"; playerId: string }
   | { type: "NIGHT_ACTION"; playerId: string; targetId: string; secondTargetId?: string }
   | { type: "CAST_VOTE"; playerId: string; targetId: string }
+  /**
+   * Sent by the server once the host's browser has answered (or can't): the AI's
+   * text, or null for a ready-made line. The text is checked before it is used.
+   */
+  | { type: "NARRATE"; candidate: string | null; reason?: NarrationFallback }
   /** Sent by the server's timer; advances the phase if its deadline has passed. */
   | { type: "TICK" }
   | { type: "RESTART"; playerId: string };

@@ -51,6 +51,18 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
         if (typeof value !== "boolean") return bad("announceSaves must be true or false.");
         next.announceSaves = value;
         break;
+      case "profanityFilter":
+        if (typeof value !== "boolean") return bad("profanityFilter must be true or false.");
+        next.profanityFilter = value;
+        break;
+      case "sneakyGang":
+        if (typeof value !== "boolean") return bad("sneakyGang must be true or false.");
+        next.sneakyGang = value;
+        break;
+      case "aiNarrator":
+        if (typeof value !== "boolean") return bad("aiNarrator must be true or false.");
+        next.aiNarrator = value;
+        break;
       case "mafiaCount":
         if (value === "auto") {
           next.mafiaCount = "auto";
@@ -86,6 +98,15 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
       default:
         return bad(`Unknown setting "${key}".`);
     }
+  }
+
+  // Safe Mode always filters chat. Asking for it off is refused; a stored "off" from
+  // Normal Mode is simply switched back on when the host moves to Safe Mode.
+  if (next.contentMode === "safe") {
+    if (Object.hasOwn(patch, "profanityFilter") && patch.profanityFilter === false) {
+      return bad("The chat filter is always on in Safe Mode.");
+    }
+    next.profanityFilter = true;
   }
   return { ok: true, settings: next };
 }

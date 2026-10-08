@@ -7,6 +7,7 @@ import type {
   ClientEventName,
   ClientToServerEvents,
   GameStatePayload,
+  NarratorRequestPayload,
   RemovedPayload,
   Role,
   ServerToClientEvents,
@@ -228,6 +229,61 @@ describe("over real sockets", () => {
     expectOk(await victim.call("chat:send", { channel: "graveyard", text: "boo" }));
     await waitFor(() => victim.chat.some((m) => m.text === "boo"), "graveyard echo");
     for (const p of players.filter((x) => x !== victim)) expect(p.chat.some((m) => m.text === "boo")).toBe(false);
+  });
+
+  it("sends narration requests to the host's browser only, and shows the AI's text to everyone", async () => {
+    const players = await lobbyOf(8);
+    const [host, second] = players as [TestClient, TestClient];
+    expectOk(await host.call("host:updateSettings", { aiNarrator: true }));
+    expectError(await second.call("host:updateSettings", { aiNarrator: false }), "NOT_HOST");
+    expectOk(await host.call("host:start", {}));
+    await waitFor(() => players.every((p) => p.state?.view.phase === "ROLE_REVEAL"), "role reveal");
+    for (const p of players) expectOk(await p.call("game:ackRole", {}));
+    await waitFor(() => players.every((p) => p.state?.view.phase === "NIGHT"), "night");
+
+    const byRole = (role: Role) => players.filter((p) => p.role === role);
+    const mafia = byRole("mafia");
+    const [doctor] = byRole("doctor") as [TestClient];
+    const [detective] = byRole("detective") as [TestClient];
+    const victim = byRole("villager").find((p) => p !== host) as TestClient;
+    for (const m of mafia) expectOk(await m.call("game:nightAction", { targetId: victim.id }));
+    expectOk(await doctor.call("game:nightAction", { targetId: doctor.id }));
+    expectOk(await detective.call("game:nightAction", { targetId: mafia[0]!.id }));
+    await waitFor(() => players.every((p) => p.state?.view.phase === "NIGHT_RESULTS"), "night results");
+
+    // Everyone sees a narrator that is still thinking...
+    await waitFor(() => host.received.some((r) => r.event === "narrator:request"), "the narrator request");
+    expect(players.every((p) => p.view.narration?.status === "thinking")).toBe(true);
+
+    // ...and only the host's browser was asked, with public facts.
+    const request = host.received.find((r) => r.event === "narrator:request")?.payload as NarratorRequestPayload;
+    const victimName = victim.view.you?.name ?? "";
+    expect(request.facts).toEqual({
+      kind: "night",
+      mode: "safe",
+      round: 1,
+      gang: "Mafia",
+      eliminated: [{ name: victimName, how: "night" }],
+      saved: false,
+      voteOutcome: null,
+    });
+    for (const p of players.filter((p) => p !== host)) {
+      expect(p.received.some((r) => r.event === "narrator:request")).toBe(false);
+      expect(JSON.stringify(p.received)).not.toContain(request.requestId);
+    }
+
+    // Only the host may answer, with a well-formed answer.
+    expectError(await second.call("narrator:submit", { requestId: request.requestId, text: "A tale." }), "NOT_HOST");
+    expectError((await host.raw("narrator:submit", { requestId: 5, text: "x" })) as { ok: boolean }, "BAD_REQUEST");
+    expectError((await host.raw("narrator:submit", { requestId: request.requestId, text: { a: 1 } })) as { ok: boolean }, "BAD_REQUEST");
+    expectError((await host.raw("narrator:submit", "nope")) as { ok: boolean }, "BAD_REQUEST");
+
+    const text = `The lamps flickered over the village, and ${victimName} was whisked away by the Mafia.`;
+    expectOk(await host.call("narrator:submit", { requestId: request.requestId, text }));
+    await waitFor(() => players.every((p) => p.view.narration?.status === "ready"), "the narration");
+    for (const p of players) {
+      expect(p.view.narration).toEqual({ kind: "night", round: 1, status: "ready", text, source: "ai" });
+    }
   });
 
   it("rejects game events from sockets that haven't joined", async () => {

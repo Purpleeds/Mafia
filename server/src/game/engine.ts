@@ -11,6 +11,7 @@ import {
   type GameError,
   type Phase,
 } from "@mafia/shared";
+import { beginNarration, expireNarration, isNarrationPending, narrate } from "./narrate.js";
 import { isNightComplete, resolveNight, submitNightAction } from "./night.js";
 import { buildRoleList, dealRoles } from "./roles.js";
 import { cryptoRng } from "./rng.js";
@@ -64,7 +65,10 @@ function dispatch(s: GameState, a: GameAction, env: GameEnv): GameError | null {
       return nightAction(s, a.playerId, a.targetId, a.secondTargetId);
     case "CAST_VOTE":
       return vote(s, a.playerId, a.targetId);
+    case "NARRATE":
+      return narrate(s, a.candidate, a.reason, env);
     case "TICK":
+      expireNarration(s, env);
       if (s.phaseEndsAt !== null && env.now >= s.phaseEndsAt) advance(s, env);
       return null;
     case "RESTART":
@@ -365,7 +369,7 @@ function nightAction(s: GameState, playerId: string, targetId: string, secondTar
   if (s.phase !== "NIGHT") return err("WRONG_PHASE", "It isn't night.");
   const player = activePlayer(s, playerId);
   if ("code" in player) return player;
-  if (!player.alive) return err("DEAD_PLAYER", "Eliminated players can't act.");
+  if (!player.alive) return err("DEAD_PLAYER", "You're out of this game, so you can't do that.");
   return submitNightAction(s, player, targetId, secondTargetId);
 }
 
@@ -411,17 +415,21 @@ function startNight(s: GameState, env: GameEnv): void {
   s.voting = null;
   s.nightReport = null;
   s.voteReport = null;
+  s.narration = null;
   enterPhase(s, "NIGHT", env);
 }
 
 function endGame(s: GameState, env: GameEnv): void {
   s.winner = s.pendingWinner;
   s.voting = null;
+  s.narration = null;
   enterPhase(s, "GAME_OVER", env);
 }
 
 /** Moves to the next phase, whether because the timer ran out or everyone has acted. */
 function advance(s: GameState, env: GameEnv): void {
+  // The results screens wait for the narrator (see beginNarration).
+  if (isNarrationPending(s)) return;
   switch (s.phase) {
     case "ROLE_REVEAL":
       startNight(s, env);
@@ -429,6 +437,7 @@ function advance(s: GameState, env: GameEnv): void {
     case "NIGHT":
       resolveNight(s, env);
       enterPhase(s, "NIGHT_RESULTS", env);
+      beginNarration(s, "night", env);
       break;
     case "NIGHT_RESULTS":
       if (s.pendingWinner) endGame(s, env);
@@ -440,7 +449,10 @@ function advance(s: GameState, env: GameEnv): void {
       break;
     case "VOTING":
       // A tie with the revote rule stays in VOTING (round 2); otherwise show the result.
-      if (resolveVoting(s, env)) enterPhase(s, "VOTE_RESULTS", env);
+      if (resolveVoting(s, env)) {
+        enterPhase(s, "VOTE_RESULTS", env);
+        beginNarration(s, "vote", env);
+      }
       break;
     case "VOTE_RESULTS":
       if (s.pendingWinner) endGame(s, env);

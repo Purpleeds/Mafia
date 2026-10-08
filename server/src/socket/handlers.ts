@@ -18,6 +18,7 @@ import {
   parseCreateRoom,
   parseEmpty,
   parseJoinRoom,
+  parseNarratorSubmit,
   parseNightAction,
   parsePeekRoom,
   parseResume,
@@ -385,6 +386,10 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
 
     on("chat:send", { category: "chat", parse: parseChat }, (p) =>
       withSession((s) => service.sendChat(s.roomCode, s.playerId, p.channel, p.text)),
+    );
+
+    on("narrator:submit", { category: "gameAction", parse: parseNarratorSubmit }, (p) =>
+      withSession((s) => service.submitNarration(s.roomCode, s.playerId, p.requestId, p.text)),
     );
 
     on("time:sync", { category: "timeSync", parse: parseTimeSync }, async (p) => ({

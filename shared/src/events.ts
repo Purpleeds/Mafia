@@ -10,6 +10,7 @@
  */
 import type { ChatChannel, GameErrorCode, GameView, SettingsPatch } from "./game.js";
 import type { Avatar } from "./identity.js";
+import type { NarrationFacts } from "./narration.js";
 
 // ---------------------------------------------------------------- limits
 
@@ -125,6 +126,16 @@ export interface ChatSendPayload {
   text: string;
 }
 
+/**
+ * The host's browser answers a narrator:request with the text its AI wrote, or
+ * null if it couldn't (not signed in, an error, too slow). Either way the server
+ * checks the text and falls back to a ready-made line when it isn't good.
+ */
+export interface NarratorSubmitPayload {
+  requestId: string;
+  text: string | null;
+}
+
 export interface TimeSyncPayload {
   /** The client's Date.now() when it sent the request (echoed back). */
   clientSentAt: number;
@@ -180,6 +191,16 @@ export interface RemovedPayload {
   message: string;
 }
 
+/**
+ * Sent to the host's browser only (nobody else ever gets it): the public facts
+ * to turn into a narration with puter.ai.chat(), and how long the server waits.
+ */
+export interface NarratorRequestPayload {
+  requestId: string;
+  facts: NarrationFacts;
+  timeoutMs: number;
+}
+
 export interface SessionReplacedPayload {
   message: string;
 }
@@ -206,6 +227,7 @@ export interface ClientToServerEvents {
   "game:nightAction": (payload: NightActionPayload, ack: Ack) => void;
   "game:vote": (payload: VotePayload, ack: Ack) => void;
   "chat:send": (payload: ChatSendPayload, ack: Ack) => void;
+  "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
 }
 
@@ -218,6 +240,8 @@ export interface ServerToClientEvents {
   "room:removed": (payload: RemovedPayload) => void;
   /** The same session was opened elsewhere (e.g. another tab); this socket is closed. */
   "session:replaced": (payload: SessionReplacedPayload) => void;
+  /** Host only: write the narration for these public facts (see NarratorRequestPayload). */
+  "narrator:request": (payload: NarratorRequestPayload) => void;
   /** Errors for events sent without an ack. */
   "server:error": (payload: ErrorPayload) => void;
 }
@@ -242,6 +266,7 @@ export const CLIENT_EVENTS = [
   "game:nightAction",
   "game:vote",
   "chat:send",
+  "narrator:submit",
   "time:sync",
 ] as const satisfies readonly ClientEventName[];
 

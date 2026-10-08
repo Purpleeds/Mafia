@@ -1,4 +1,10 @@
-import type { ChatHistoryPayload, ChatMessage, GameStatePayload, RemovedPayload } from "@mafia/shared";
+import type {
+  ChatHistoryPayload,
+  ChatMessage,
+  GameStatePayload,
+  NarratorRequestPayload,
+  RemovedPayload,
+} from "@mafia/shared";
 import type { Broadcaster } from "../rooms/roomService.js";
 import { playerRoom, type MafiaServer } from "./types.js";
 
@@ -16,6 +22,11 @@ export class SocketBroadcaster implements Broadcaster {
 
   chatHistory(roomCode: string, playerId: string, payload: ChatHistoryPayload): void {
     this.io.to(playerRoom(roomCode, playerId)).emit("chat:history", payload);
+  }
+
+  /** Only the host's private room gets this; nobody else is ever sent the facts. */
+  narrationRequest(roomCode: string, playerId: string, payload: NarratorRequestPayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("narrator:request", payload);
   }
 
   removed(roomCode: string, playerId: string, payload: RemovedPayload): void {

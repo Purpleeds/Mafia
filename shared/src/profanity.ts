@@ -1,4 +1,10 @@
-import { RegExpMatcher, englishDataset, englishRecommendedTransformers } from "obscenity";
+import {
+  RegExpMatcher,
+  TextCensor,
+  asteriskCensorStrategy,
+  englishDataset,
+  englishRecommendedTransformers,
+} from "obscenity";
 
 /**
  * Rude-word check used for room codes and nicknames, on both the client (for
@@ -33,3 +39,25 @@ export function containsProfanity(text: string): boolean {
   const words = normalized.split(/[^A-Z]+/).filter(Boolean);
   return words.some((w) => BLOCKED_WORDS.has(w) || BLOCKED_WORDS.has(w.replace(/(.)\1+/g, "$1")));
 }
+
+const censor = new TextCensor().setStrategy(asteriskCensorStrategy());
+
+/** True if this single word is on one of the supplementary lists. */
+function isBlockedWord(word: string): boolean {
+  const normalized = normalizeForCheck(word);
+  const letters = normalized.replace(/[^A-Z]/g, "");
+  if (letters.length === 0) return false;
+  if (BLOCKED_SUBSTRINGS.some((s) => letters.includes(s))) return true;
+  return BLOCKED_WORDS.has(letters) || BLOCKED_WORDS.has(letters.replace(/(.)\1+/g, "$1"));
+}
+
+/**
+ * Chat filter: covers rude words with asterisks ("what the ****") and leaves
+ * everything else as it was. Word lengths are kept, so the sentence still reads.
+ */
+export function censorProfanity(text: string): string {
+  const matches = matcher.getAllMatches(text);
+  const first = matches.length > 0 ? censor.applyTo(text, matches) : text;
+  return first.replace(/[\p{L}\p{N}@$]+/gu, (word) => (isBlockedWord(word) ? "*".repeat(word.length) : word));
+}
+

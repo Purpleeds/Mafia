@@ -93,6 +93,18 @@ export interface GameSettings {
   showVotes: boolean;
   /** Tell everyone when the Doctor saved someone (without saying who). */
   announceSaves: boolean;
+  /**
+   * Mask rude words in chat. Always on in Safe Mode, whatever is stored here
+   * (see isChatFiltered); in Normal Mode the host may turn it off.
+   */
+  profanityFilter: boolean;
+  /** Safe Mode only: call the Mafia "the Sneaky Gang" (see gangName). */
+  sneakyGang: boolean;
+  /**
+   * The host's browser writes the morning news and the vote results with Puter's
+   * AI. Falls back to ready-made lines whenever that doesn't work out.
+   */
+  aiNarrator: boolean;
 }
 
 export interface SettingsPatch {
@@ -104,6 +116,21 @@ export interface SettingsPatch {
   revealRoleOnDeath?: boolean;
   showVotes?: boolean;
   announceSaves?: boolean;
+  profanityFilter?: boolean;
+  sneakyGang?: boolean;
+  aiNarrator?: boolean;
+}
+
+/** What the Mafia are called in this game. "Sneaky Gang" is a Safe Mode option for younger players. */
+export type GangName = "Mafia" | "Sneaky Gang";
+
+export function gangName(settings: Pick<GameSettings, "contentMode" | "sneakyGang">): GangName {
+  return settings.contentMode === "safe" && settings.sneakyGang ? "Sneaky Gang" : "Mafia";
+}
+
+/** Whether chat is filtered: always in Safe Mode, otherwise the host's choice. */
+export function isChatFiltered(settings: Pick<GameSettings, "contentMode" | "profanityFilter">): boolean {
+  return settings.contentMode === "safe" || settings.profanityFilter;
 }
 
 export const TIMER_LIMITS: Record<keyof TimerSettings, { min: number; max: number }> = {
@@ -134,6 +161,9 @@ export function defaultSettings(): GameSettings {
     revealRoleOnDeath: true,
     showVotes: true,
     announceSaves: true,
+    profanityFilter: true,
+    sneakyGang: false,
+    aiNarrator: false,
   };
 }
 
@@ -179,6 +209,19 @@ export interface NightReportView {
   deaths: DeathView[];
   /** The Doctor saved the Mafia's target. Only ever true when the host announces saves. */
   saved: boolean;
+}
+
+/**
+ * The announcement after a night or a vote. The same for everyone (it only ever
+ * holds public facts). While `status` is "thinking" the narrator is still
+ * writing; `source` says whether the AI or a ready-made line wrote it.
+ */
+export interface NarrationView {
+  kind: "night" | "vote";
+  round: number;
+  status: "thinking" | "ready";
+  text: string | null;
+  source: "ai" | "template" | null;
 }
 
 export interface VoteRoundSummaryView {
@@ -318,6 +361,8 @@ export interface GameView {
   you: YouView | null;
   nightReport: NightReportView | null;
   voteReport: VoteReportView | null;
+  /** The latest morning news or vote result, from the narrator. */
+  narration: NarrationView | null;
   voting: VotingView | null;
   winner: Winner | null;
   /** Game over only. */

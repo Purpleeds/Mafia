@@ -119,6 +119,15 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     you: viewer ? buildYou(state, viewer) : spectator ? spectatorYou(state, spectator) : null,
     nightReport,
     voteReport,
+    narration: state.narration
+      ? {
+          kind: state.narration.kind,
+          round: state.narration.round,
+          status: state.narration.status === "ready" ? "ready" : "thinking",
+          text: state.narration.text,
+          source: state.narration.source,
+        }
+      : null,
     voting,
     winner: state.winner,
     winnerIds,

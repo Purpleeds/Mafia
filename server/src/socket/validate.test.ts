@@ -13,6 +13,7 @@ import {
   parseTimeSync,
   parseUpdateProfile,
   parseVote,
+  parseNarratorSubmit,
 } from "./validate.js";
 
 const avatar = { color: "teal", seed: "fox" };
@@ -98,5 +99,39 @@ describe("payload validation", () => {
     expect(parseResume({ roomCode: "ABCD", sessionToken: "short" }).ok).toBe(false);
     expect(parseResume({ roomCode: "PARTY22", sessionToken: "a".repeat(32) }).ok).toBe(true);
     expect(parseResume({ roomCode: "ABCD", sessionToken: "a".repeat(32) }).ok).toBe(true);
+  });
+});
+
+describe("parseNarratorSubmit", () => {
+  it("takes an id and the AI's text, or null when the AI failed", () => {
+    expect(parseNarratorSubmit({ requestId: "abc123", text: "Hello." })).toEqual({
+      ok: true,
+      value: { requestId: "abc123", text: "Hello." },
+    });
+    expect(parseNarratorSubmit({ requestId: "abc123", text: null })).toEqual({
+      ok: true,
+      value: { requestId: "abc123", text: null },
+    });
+  });
+
+  it("drops anything else riding along, and rejects bad shapes and sizes", () => {
+    expect(parseNarratorSubmit({ requestId: "abc123", text: "Hi", extra: 1, playerId: "p1" })).toEqual({
+      ok: true,
+      value: { requestId: "abc123", text: "Hi" },
+    });
+    for (const bad of [
+      null,
+      "text",
+      {},
+      { requestId: 7, text: "x" },
+      { requestId: "ABC", text: "x" },
+      { requestId: "", text: "x" },
+      { requestId: "a".repeat(65), text: "x" },
+      { requestId: "abc123" },
+      { requestId: "abc123", text: 5 },
+      { requestId: "abc123", text: "x".repeat(4001) },
+    ]) {
+      expect(parseNarratorSubmit(bad).ok, JSON.stringify(bad)?.slice(0, 40)).toBe(false);
+    }
   });
 });

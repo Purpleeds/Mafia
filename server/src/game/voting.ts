@@ -17,7 +17,7 @@ export function validVoteTargets(state: GameState, voter: PlayerState): string[]
 
 export function castVote(state: GameState, voter: PlayerState, targetId: string): GameError | null {
   if (!state.voting) return { code: "WRONG_PHASE", message: "Voting is not open." };
-  if (!voter.alive) return { code: "DEAD_PLAYER", message: "Eliminated players can't vote." };
+  if (!voter.alive) return { code: "DEAD_PLAYER", message: "You're out of this game, so you can't vote." };
   if (!validVoteTargets(state, voter).includes(targetId)) {
     return { code: "INVALID_TARGET", message: "You can't vote for that." };
   }

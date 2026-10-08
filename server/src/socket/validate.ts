@@ -8,6 +8,7 @@ import {
   type ChatSendPayload,
   type CreateRoomPayload,
   type JoinRoomPayload,
+  type NarratorSubmitPayload,
   type NightActionPayload,
   type PeekRoomPayload,
   type ResumeSessionPayload,
@@ -34,6 +35,7 @@ const MAX_CODE_INPUT = 16;
 const MAX_PASSWORD_INPUT = ROOM_PASSWORD_MAX_LENGTH * 4;
 const MAX_ID = 64;
 const MAX_CHAT_INPUT = 2000;
+const MAX_NARRATION_INPUT = 4000;
 const MAX_SETTINGS_JSON = 2000;
 const CHANNELS: readonly ChatChannel[] = ["public", "mafia", "graveyard"];
 
@@ -177,6 +179,17 @@ export function parseVote(raw: unknown): Parsed<VotePayload> {
   const targetId = stringField(raw, "targetId", MAX_ID);
   if (targetId === null) return bad(`targetId must be a player id or "${SKIP}".`);
   return ok({ targetId });
+}
+
+/** The AI's text is only bounded here; checkNarration (in the engine) decides if it is fit to show. */
+export function parseNarratorSubmit(raw: unknown): Parsed<NarratorSubmitPayload> {
+  if (!isRecord(raw)) return bad("Expected { requestId, text }.");
+  const requestId = raw.requestId;
+  if (typeof requestId !== "string" || !/^[a-z0-9]{3,64}$/.test(requestId)) return bad("Invalid requestId.");
+  if (raw.text === null) return ok({ requestId, text: null });
+  const text = stringField(raw, "text", MAX_NARRATION_INPUT);
+  if (text === null) return bad("text must be a string or null.");
+  return ok({ requestId, text });
 }
 
 export function parseChat(raw: unknown): Parsed<ChatSendPayload> {

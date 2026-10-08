@@ -26,6 +26,8 @@ export function createLobby(settings: GameSettings = defaultSettings()): GameSta
     history: [],
     pendingWinner: null,
     winner: null,
+    narration: null,
+    usedTemplates: [],
   };
 }
 
@@ -65,6 +67,8 @@ export function resetGameData(state: GameState): void {
   state.history = [];
   state.pendingWinner = null;
   state.winner = null;
+  state.narration = null;
+  state.usedTemplates = [];
   state.phaseEndsAt = null;
   for (const p of state.players) {
     p.role = null;
