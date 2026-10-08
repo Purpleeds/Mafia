@@ -384,3 +384,18 @@ html[data-text="large"] { font-size: 112.5%; }
 html[data-text="larger"] { font-size: 125%; }
 .a11y-settings .segmented { flex-wrap: nowrap; }
 .a11y-settings .segment { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+
+/* ------------------------------------------------------------------ presets */
+.preset-list { display: grid; gap: 8px; }
+.preset-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: 10px 12px; min-height: var(--tap); border-radius: var(--radius-small);
+  border: 2px solid var(--border); background: var(--surface-2); cursor: pointer;
+}
+.preset-option:hover:not(:disabled) { background: var(--surface-3); }
+.preset-option.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.preset-option:disabled { cursor: progress; }
+.preset-name { font-weight: 800; }
+.preset-text { color: var(--text-muted); font-size: 0.9rem; }
+.preset-note { color: var(--warning); font-size: 0.85rem; font-weight: 700; }
+@media (min-width: 720px) { .preset-list { grid-template-columns: repeat(3, 1fr); } }

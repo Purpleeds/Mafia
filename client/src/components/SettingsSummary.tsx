@@ -1,6 +1,7 @@
 import { OPTIONAL_ROLES, type GameSettings } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { MODE_INFO } from "../lib/copy";
+import { presetName } from "./PresetPicker";
 import { fill, tieRuleLabel, wordsFor } from "../lib/wording";
 import { formatSeconds } from "../lib/labels";
 import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel } from "../lib/settings";
@@ -20,6 +21,10 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
             <Icon name={MODE_INFO[settings.contentMode].icon} size={16} />{" "}
             {settings.contentMode === "safe" ? "Safe (family-friendly)" : "Normal (crime drama)"}
           </dd>
+        </div>
+        <div>
+          <dt>Preset</dt>
+          <dd>{presetName(settings)}</dd>
         </div>
         <div>
           <dt>{fill("{gang}", settings)}</dt>

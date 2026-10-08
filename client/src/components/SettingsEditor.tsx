@@ -20,6 +20,7 @@ import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import { ErrorText } from "./ErrorText";
 import { NarratorSetting } from "./NarratorSetting";
+import { PresetPicker } from "./PresetPicker";
 
 function rolePatch(role: OptionalRole, on: boolean): Partial<Record<OptionalRole, boolean>> {
   const patch: Partial<Record<OptionalRole, boolean>> = {};
@@ -77,6 +78,8 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
           <p className="field-hint">{MODE_INFO[settings.contentMode].description}</p>
           <p className="field-hint">The mode is shown to everyone, and can't change once the game starts.</p>
         </fieldset>
+
+        <PresetPicker settings={settings} playerCount={playerCount} disabled={action.pending} onApply={send} />
 
         {safe ? (
           <label htmlFor="setting-sneaky" className="switch-row">
