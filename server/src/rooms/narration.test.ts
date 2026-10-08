@@ -290,7 +290,7 @@ describe("the chat filter", () => {
     return { code: host.roomCode, host: host.playerId, friend: other.playerId };
   }
   const say = async (env: Env, room: { code: string; host: string }, text: string) => {
-    must(await env.service.sendChat(room.code, room.host, "public", text));
+    must(await env.service.sendChat(room.code, room.host, text));
     const received = env.broadcaster.chatsTo(room.host);
     return received[received.length - 1]?.text;
   };
@@ -326,7 +326,7 @@ describe("the chat filter", () => {
     const room = await startedRoom(env, {});
     await env.fireTimer(room.code); // NIGHT
     const [mafia] = room.withRole("mafia") as [string];
-    must(await env.service.sendChat(room.code, mafia, "mafia", "pick the shitty one"));
+    must(await env.service.sendChat(room.code, mafia, "pick the shitty one"));
     const sent = env.broadcaster.chatsTo(mafia).pop();
     expect(sent?.text).toBe("pick the ****ty one");
   });

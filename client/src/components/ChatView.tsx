@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MAX_CHAT_LENGTH, type Avatar, type ChatMessage } from "@mafia/shared";
+import { MAX_CHAT_LENGTH, type Avatar, type ChatMessage, type ChatReaction } from "@mafia/shared";
+import { Icon } from "../art/icons";
+import { REACTIONS, reactionInfo } from "../lib/reactions";
 import { AvatarBadge } from "./AvatarBadge";
 
 interface ChatViewProps {
@@ -7,6 +9,8 @@ interface ChatViewProps {
   youId: string | null;
   /** Null when nobody can write here (read-only). */
   onSend: ((text: string) => Promise<string | null>) | null;
+  /** Quick reactions; offered whenever typing is. Returns an error message or null. */
+  onReact?: ((reaction: ChatReaction) => Promise<string | null>) | null;
   avatarOf: (senderId: string) => Avatar | null;
   placeholder: string;
   /** Shown instead of the input when reading only. */
@@ -16,7 +20,7 @@ interface ChatViewProps {
 }
 
 /** A message list and input. Used for the day chat, the graveyard and the Mafia whisper. */
-export function ChatView({ messages, youId, onSend, avatarOf, placeholder, readOnlyNote, emptyText, label }: ChatViewProps) {
+export function ChatView({ messages, youId, onSend, onReact, avatarOf, placeholder, readOnlyNote, emptyText, label }: ChatViewProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -26,6 +30,15 @@ export function ChatView({ messages, youId, onSend, avatarOf, placeholder, readO
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
   }, [messages.length]);
+
+  const [reacting, setReacting] = useState(false);
+  const react = async (reaction: ChatReaction) => {
+    if (!onReact || reacting) return;
+    setReacting(true);
+    const problem = await onReact(reaction);
+    setReacting(false);
+    setError(problem);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -53,12 +66,37 @@ export function ChatView({ messages, youId, onSend, avatarOf, placeholder, readO
               {avatar ? <AvatarBadge avatar={avatar} size={28} /> : <span className="chat-avatar-gap" />}
               <div className="chat-bubble">
                 <span className="chat-name">{mine ? "You" : m.senderName}</span>
-                <span className="chat-text">{m.text}</span>
+                {m.reaction ? (
+                  <span className="chat-text chat-reaction">
+                    <Icon name={reactionInfo(m.reaction).icon} size={26} />
+                    <span className="sr-only">{reactionInfo(m.reaction).label}</span>
+                    <span aria-hidden="true">{reactionInfo(m.reaction).label}</span>
+                  </span>
+                ) : (
+                  <span className="chat-text">{m.text}</span>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
+      {onSend && onReact ? (
+        <div className="reaction-bar" role="group" aria-label="Quick reactions">
+          {REACTIONS.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className="btn btn-small reaction-btn"
+              aria-label={r.label}
+              title={r.label}
+              disabled={reacting}
+              onClick={() => void react(r.id)}
+            >
+              <Icon name={r.icon} size={24} />
+            </button>
+          ))}
+        </div>
+      ) : null}
       {onSend ? (
         <form className="chat-form" onSubmit={(e) => void submit(e)}>
           <label htmlFor="chat-input" className="sr-only">

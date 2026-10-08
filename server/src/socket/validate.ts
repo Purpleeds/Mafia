@@ -4,7 +4,9 @@ import {
   isAvatar,
   normalizeRoomCode,
   type Avatar,
-  type ChatChannel,
+  CHAT_REACTIONS,
+  type ChatReactPayload,
+  type ChatReaction,
   type ChatSendPayload,
   type CreateRoomPayload,
   type JoinRoomPayload,
@@ -37,7 +39,6 @@ const MAX_ID = 64;
 const MAX_CHAT_INPUT = 2000;
 const MAX_NARRATION_INPUT = 4000;
 const MAX_SETTINGS_JSON = 2000;
-const CHANNELS: readonly ChatChannel[] = ["public", "mafia", "graveyard"];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -193,14 +194,20 @@ export function parseNarratorSubmit(raw: unknown): Parsed<NarratorSubmitPayload>
 }
 
 export function parseChat(raw: unknown): Parsed<ChatSendPayload> {
-  if (!isRecord(raw)) return bad("Expected { channel, text }.");
-  const channel = raw.channel;
-  if (typeof channel !== "string" || !(CHANNELS as readonly string[]).includes(channel)) {
-    return bad("channel must be public, mafia or graveyard.");
-  }
+  if (!isRecord(raw)) return bad("Expected { text }.");
+  // Any "channel" a client sends is ignored: the server decides where a message goes.
   const text = stringField(raw, "text", MAX_CHAT_INPUT);
   if (text === null) return bad("text must be a string.");
-  return ok({ channel: channel as ChatChannel, text });
+  return ok({ text });
+}
+
+export function parseReaction(raw: unknown): Parsed<ChatReactPayload> {
+  if (!isRecord(raw)) return bad("Expected { reaction }.");
+  const reaction = raw.reaction;
+  if (typeof reaction !== "string" || !(CHAT_REACTIONS as readonly string[]).includes(reaction)) {
+    return bad("reaction must be one of: " + CHAT_REACTIONS.join(", ") + ".");
+  }
+  return ok({ reaction: reaction as ChatReaction });
 }
 
 export function parseTimeSync(raw: unknown): Parsed<TimeSyncPayload> {

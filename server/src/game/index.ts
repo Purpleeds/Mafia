@@ -1,5 +1,5 @@
 export { applyAction, normalizeName } from "./engine.js";
-export { canRead, canWrite } from "./chat.js";
+export { canRead, canWrite, chatChannelFor } from "./chat.js";
 export { buildRoleList, dealRoles } from "./roles.js";
 export { cryptoRng, mulberry32, type Rng } from "./rng.js";
 export { nextWake } from "./narrate.js";

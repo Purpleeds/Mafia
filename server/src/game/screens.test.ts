@@ -69,6 +69,10 @@ describe("chat access in the view", () => {
   it("gives spectators the graveyard", () => {
     const g = gameWithRoles(R7);
     g.ok({ type: "JOIN", playerId: "late", name: "Late", avatar: { color: "red", seed: "fox" } });
+    // locked at night like everyone else; the graveyard opens by day
+    expect(getGameView(g.state, "late").you?.chat).toEqual({ write: [], read: ["public", "graveyard"] });
+    runNight(g, []);
+    g.advanceTo("DAY_DISCUSSION");
     expect(getGameView(g.state, "late").you?.chat).toEqual({ write: ["graveyard"], read: ["public", "graveyard"] });
   });
 });

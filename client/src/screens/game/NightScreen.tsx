@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { type ChatReaction } from "@mafia/shared";
 import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ChatView } from "../../components/ChatView";
@@ -172,11 +173,16 @@ function Whisper({ view, real }: { view: NonNullable<PhaseProps["received"]["pay
 
   const send = async (text: string): Promise<string | null> => {
     if (real) {
-      const result = await call("chat:send", { channel: "mafia", text });
+      const result = await call("chat:send", { text });
       return result.ok ? null : friendlyError(result.error);
     }
     setLocal((cur) => [...cur, { id: String(cur.length), senderId: you?.id ?? "", senderName: you?.name ?? "", text }]);
     return null;
+  };
+
+  const react = async (reaction: ChatReaction): Promise<string | null> => {
+    const result = await call("chat:react", { reaction });
+    return result.ok ? null : friendlyError(result.error);
   };
 
   return (
@@ -190,6 +196,7 @@ function Whisper({ view, real }: { view: NonNullable<PhaseProps["received"]["pay
           messages={messages}
           youId={you?.id ?? null}
           onSend={send}
+          onReact={real ? react : null}
           avatarOf={avatarOf}
           placeholder="Whisper…"
           emptyText="It's quiet…"

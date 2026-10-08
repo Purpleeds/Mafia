@@ -9,7 +9,9 @@ import {
   validateCustomRoomCode,
   validateRoomPassword,
   type Avatar,
-  type ChatChannel,
+  CHAT_REACTIONS,
+  MAX_CHAT_LENGTH,
+  type ChatReaction,
   type ChatHistoryPayload,
   type ChatMessage,
   type ErrorCode,
@@ -26,7 +28,7 @@ import {
 import {
   applyAction,
   canRead,
-  canWrite,
+  chatChannelFor,
   createLobby,
   cryptoRng,
   getGameView,
@@ -373,18 +375,37 @@ export class RoomService {
     });
   }
 
-  sendChat(code: string, memberId: string, channel: ChatChannel, rawText: string): Promise<ServiceResult<null>> {
+  /** A typed message. The server picks the channel from who the sender is. */
+  sendChat(code: string, memberId: string, rawText: string): Promise<ServiceResult<null>> {
+    return this.relayChat(code, memberId, (state) => {
+      const cleaned = sanitizeChatText(rawText);
+      if (cleaned === null) return fail("BAD_REQUEST", `Messages must be 1–${MAX_CHAT_LENGTH} characters.`);
+      // Safe Mode always masks rude words; in Normal Mode it is the host's choice.
+      return ok({ text: isChatFiltered(state.settings) ? censorProfanity(cleaned) : cleaned });
+    });
+  }
+
+  /** A quick reaction, routed exactly like typed text. */
+  sendReaction(code: string, memberId: string, reaction: ChatReaction): Promise<ServiceResult<null>> {
+    if (!(CHAT_REACTIONS as readonly string[]).includes(reaction)) {
+      return Promise.resolve(fail("BAD_REQUEST", "Unknown reaction."));
+    }
+    return this.relayChat(code, memberId, () => ok({ text: "", reaction }));
+  }
+
+  private relayChat(
+    code: string,
+    memberId: string,
+    build: (state: GameState) => ServiceResult<{ text: string; reaction?: ChatReaction }>,
+  ): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
       const { state } = room;
       const sender = findMember(state, memberId);
       if (!sender) return fail("NOT_IN_ROOM", "You are not in this room.");
-      if (!canWrite(state, memberId, channel)) {
-        return fail("CHAT_NOT_ALLOWED", "You can't send messages there right now.");
-      }
-      const cleaned = sanitizeChatText(rawText);
-      if (cleaned === null) return fail("BAD_REQUEST", "Messages must be 1–300 characters.");
-      // Safe Mode always masks rude words; in Normal Mode it is the host's choice.
-      const text = isChatFiltered(state.settings) ? censorProfanity(cleaned) : cleaned;
+      const channel = chatChannelFor(state, memberId);
+      if (channel === null) return fail("CHAT_NOT_ALLOWED", "You can't send messages right now.");
+      const content = build(state);
+      if (!content.ok) return content;
 
       const message: ChatMessage = {
         // Random ids: a shared counter would reveal how much hidden-channel chat happened.
@@ -392,7 +413,8 @@ export class RoomService {
         channel,
         senderId: sender.id,
         senderName: sender.name,
-        text,
+        text: content.value.text,
+        ...(content.value.reaction ? { reaction: content.value.reaction } : {}),
         sentAt: this.clock(),
       };
       room.chat.push(message);

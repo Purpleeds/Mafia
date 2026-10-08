@@ -197,9 +197,9 @@ describe("over real sockets", () => {
     expectError(await mafia[0]!.call("game:nightAction", { targetId: mafia[1]!.id }), "INVALID_TARGET");
 
     // chat: the town is silent, the Mafia talk privately
-    expectError(await bystander.call("chat:send", { channel: "public", text: "hello?" }), "CHAT_NOT_ALLOWED");
-    expectError(await bystander.call("chat:send", { channel: "mafia", text: "let me in" }), "CHAT_NOT_ALLOWED");
-    expectOk(await mafia[0]!.call("chat:send", { channel: "mafia", text: "victim it is" }));
+    expectError(await bystander.call("chat:send", { text: "hello?" }), "CHAT_NOT_ALLOWED");
+    expectError(await bystander.call("chat:send", { text: "let me in" }), "CHAT_NOT_ALLOWED");
+    expectOk(await mafia[0]!.call("chat:send", { text: "victim it is" }));
     await waitFor(() => mafia[1]!.chat.some((m) => m.text === "victim it is"), "mafia chat");
 
     expectOk(await mafia[0]!.call("game:nightAction", { targetId: victim.id }));
@@ -224,11 +224,14 @@ describe("over real sockets", () => {
       }
     }
 
-    // the dead can't talk to the living, but have their own channel
-    expectError(await victim.call("chat:send", { channel: "public", text: "it was them!" }), "CHAT_NOT_ALLOWED");
-    expectOk(await victim.call("chat:send", { channel: "graveyard", text: "boo" }));
-    await waitFor(() => victim.chat.some((m) => m.text === "boo"), "graveyard echo");
-    for (const p of players.filter((x) => x !== victim)) expect(p.chat.some((m) => m.text === "boo")).toBe(false);
+    // by day the dead have their own channel, and the server routes them there: the living never see it
+    expectOk(await victim.call("chat:send", { text: "it was them!" }));
+    expectOk(await victim.call("chat:react", { reaction: "shocked" }));
+    await waitFor(() => victim.chat.some((m) => m.reaction === "shocked"), "graveyard echo");
+    expect(victim.chat.every((m) => m.channel === "graveyard" || m.channel === "mafia" || m.channel === "public")).toBe(true);
+    for (const p of players.filter((x) => x !== victim)) {
+      expect(p.chat.some((m) => m.text === "it was them!" || m.reaction === "shocked")).toBe(false);
+    }
   });
 
   it("sends narration requests to the host's browser only, and shows the AI's text to everyone", async () => {
@@ -289,7 +292,7 @@ describe("over real sockets", () => {
   it("rejects game events from sockets that haven't joined", async () => {
     const c = client();
     expectError(await c.call("game:vote", { targetId: "skip" }), "NOT_IN_ROOM");
-    expectError(await c.call("chat:send", { channel: "public", text: "hi" }), "NOT_IN_ROOM");
+    expectError(await c.call("chat:send", { text: "hi" }), "NOT_IN_ROOM");
     expectError(await c.call("room:join", { roomCode: "ZZZZ", name: "Lost", avatar: AVATAR }), "ROOM_NOT_FOUND");
     expectError(
       (await c.raw("room:join", { roomCode: "WAY-TOO-LONG", name: "x", avatar: AVATAR })) as { ok: boolean },
@@ -306,7 +309,7 @@ describe("over real sockets", () => {
   it("rate-limits chat spam", async () => {
     const [host] = await lobbyOf(2);
     const results = await Promise.all(
-      Array.from({ length: 10 }, (_, i) => host!.call("chat:send", { channel: "public", text: `spam ${i}` })),
+      Array.from({ length: 10 }, (_, i) => host!.call("chat:send", { text: `spam ${i}` })),
     );
     const limited = results.filter((r) => !r.ok && r.error.code === "RATE_LIMITED");
     expect(results.filter((r) => r.ok)).toHaveLength(5);
@@ -349,7 +352,7 @@ describe("over real sockets", () => {
     const tab = client();
     expectOk(await tab.call("room:resume", guest.session!));
     await waitFor(() => guest.replaced && !guest.socket.connected, "old tab closed");
-    expectOk(await tab.call("chat:send", { channel: "public", text: "from the new tab" }));
+    expectOk(await tab.call("chat:send", { text: "from the new tab" }));
   });
 
   it("removes a player who leaves the lobby", async () => {
@@ -393,7 +396,7 @@ describe("over real sockets", () => {
     expectError(await a.call("host:kick", { playerId: b.id }), "NOT_HOST");
     expectOk(await host.call("host:kick", { playerId: b.id }));
     await waitFor(() => b.removed?.reason === "kicked", "kick notice");
-    expectError(await b.call("chat:send", { channel: "public", text: "still here?" }), "NOT_IN_ROOM");
+    expectError(await b.call("chat:send", { text: "still here?" }), "NOT_IN_ROOM");
     expectError(await client().call("room:resume", b.session!), "SESSION_INVALID");
 
     expectOk(await host.call("host:transfer", { playerId: a.id }));
@@ -439,7 +442,7 @@ describe("over real sockets", () => {
   it("keeps your seat when a join to another room fails", async () => {
     const [host, guest] = (await lobbyOf(2)) as [TestClient, TestClient];
     expectError(await guest.call("room:join", { roomCode: "QQQQ", name: "Typo", avatar: AVATAR }), "ROOM_NOT_FOUND");
-    expectOk(await guest.call("chat:send", { channel: "public", text: "still here" }));
+    expectOk(await guest.call("chat:send", { text: "still here" }));
     await waitFor(() => host.chat.some((m) => m.text === "still here"), "chat from kept seat");
     expect(host.view.players).toHaveLength(2);
   });

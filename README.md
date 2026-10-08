@@ -143,6 +143,25 @@ to download or license and no sources to credit.
   the silent switch also silences web audio, as with most web games.
 - `window.__mafiaAudio` shows the audio state and how many of each sound have played (handy for testing).
 
+## Chat
+
+The server decides where every message goes (`chatChannelFor` in `server/src/game/chat.ts`) from the sender's role, status and the
+phase. A client only sends `{ text }`; it can't pick, and can't try, a channel.
+
+| Who | Phase | Channel |
+| --- | --- | --- |
+| Everyone | lobby, game over | Public |
+| Living players | morning news, day, voting, vote results | Day chat (public) |
+| Eliminated players and spectators | the same day phases | Spectator chat (`graveyard`), invisible to living players: they aren't sent it, don't get it in their history and don't see its tab |
+| Living Mafia | night | Mafia chat (Mafia members only; it stays in their history afterwards) |
+| Everyone else | night, and the role reveal | locked |
+
+- Messages are 1–300 characters (control and invisible characters are stripped), limited to a burst of 5 then one a second per player.
+- The profanity filter masks rude words on the server before a message is stored or sent: always in Safe Mode, the host's choice
+  in Normal Mode (on by default).
+- Four quick reactions (thinking, suspicious, laughing, shocked) sit above the text box wherever you may write. They are sent as
+  `chat:react`, follow the same routing, lock and rate limit, and carry no text. At night the Mafia can react in their whisper box.
+
 ## Rooms and joining
 
 - Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.
@@ -180,7 +199,8 @@ Your identity always comes from the session the socket joined with, never from t
 | `game:ackRole` | `{}` | "I've seen my role" |
 | `game:nightAction` | `{ targetId, secondTargetId? }` | Mafia/Doctor/Detective/Bodyguard/Cupid |
 | `game:vote` | `{ targetId }` | a player id or `"skip"` |
-| `chat:send` | `{ channel, text }` | `public`, `mafia` (living Mafia, at night) or `graveyard` (eliminated players and spectators) |
+| `chat:send` | `{ text }` | the server picks the channel (see Chat); a `channel` sent by a client is ignored |
+| `chat:react` | `{ reaction }` | `thinking`, `suspicious`, `laughing` or `shocked`; routed exactly like `chat:send` |
 | `narrator:submit` | `{ requestId, text }` | host only: the AI's narration for a `narrator:request`, or `null` if it failed |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
 

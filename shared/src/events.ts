@@ -121,9 +121,20 @@ export interface VotePayload {
   targetId: string;
 }
 
+/**
+ * A chat message. There is no channel here on purpose: the server decides where
+ * it goes from the sender's role, status and the phase (see chatChannelFor).
+ */
 export interface ChatSendPayload {
-  channel: ChatChannel;
   text: string;
+}
+
+/** The quick reactions for players who don't want to type. */
+export const CHAT_REACTIONS = ["thinking", "suspicious", "laughing", "shocked"] as const;
+export type ChatReaction = (typeof CHAT_REACTIONS)[number];
+
+export interface ChatReactPayload {
+  reaction: ChatReaction;
 }
 
 /**
@@ -176,7 +187,10 @@ export interface ChatMessage {
   channel: ChatChannel;
   senderId: string;
   senderName: string;
+  /** Empty for a reaction. */
   text: string;
+  /** Set when this is a quick reaction instead of typed text. */
+  reaction?: ChatReaction;
   sentAt: number;
 }
 
@@ -227,6 +241,7 @@ export interface ClientToServerEvents {
   "game:nightAction": (payload: NightActionPayload, ack: Ack) => void;
   "game:vote": (payload: VotePayload, ack: Ack) => void;
   "chat:send": (payload: ChatSendPayload, ack: Ack) => void;
+  "chat:react": (payload: ChatReactPayload, ack: Ack) => void;
   "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
 }
@@ -266,6 +281,7 @@ export const CLIENT_EVENTS = [
   "game:nightAction",
   "game:vote",
   "chat:send",
+  "chat:react",
   "narrator:submit",
   "time:sync",
 ] as const satisfies readonly ClientEventName[];

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChatChannel, GameView } from "@mafia/shared";
+import type { ChatChannel, ChatReaction, GameView } from "@mafia/shared";
 import { friendlyError } from "../lib/errors";
 import { call } from "../net/socket";
 import { useAppState } from "../state/store";
@@ -22,7 +22,12 @@ export function ChatPanel({ view }: { view: GameView }) {
     view.players.find((p) => p.id === id)?.avatar ?? view.spectators.find((s) => s.id === id)?.avatar ?? null;
 
   const send = async (text: string): Promise<string | null> => {
-    const result = await call("chat:send", { channel: active, text });
+    const result = await call("chat:send", { text });
+    return result.ok ? null : friendlyError(result.error);
+  };
+  // The server picks the channel from who you are and the phase; the tab only chooses what to read.
+  const react = async (reaction: ChatReaction): Promise<string | null> => {
+    const result = await call("chat:react", { reaction });
     return result.ok ? null : friendlyError(result.error);
   };
 
@@ -53,6 +58,7 @@ export function ChatPanel({ view }: { view: GameView }) {
         messages={messages}
         youId={you?.id ?? null}
         onSend={canWrite ? send : null}
+        onReact={canWrite ? react : null}
         avatarOf={avatarOf}
         placeholder={active === "graveyard" ? words.outChatPlaceholder : "Message the town"}
         readOnlyNote={

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseChat,
+  parseReaction,
   parseCreateRoom,
   parseEmpty,
   parseJoinRoom,
@@ -79,7 +80,7 @@ describe("payload validation", () => {
   it("bounds string sizes", () => {
     expect(parseCreateRoom({ name: "x".repeat(65), avatar }).ok).toBe(false);
     expect(parseVote({ targetId: "x".repeat(65) }).ok).toBe(false);
-    expect(parseChat({ channel: "public", text: "x".repeat(2001) }).ok).toBe(false);
+    expect(parseChat({ text: "x".repeat(2001) }).ok).toBe(false);
     expect(parseSettingsPatch({ timers: { nightSeconds: "x".repeat(3000) } }).ok).toBe(false);
   });
 
@@ -93,8 +94,11 @@ describe("payload validation", () => {
   it("checks types of each field", () => {
     expect(parseNightAction({ targetId: 3 }).ok).toBe(false);
     expect(parseNightAction({ targetId: "a", secondTargetId: 3 }).ok).toBe(false);
-    expect(parseChat({ channel: "secret", text: "hi" }).ok).toBe(false);
-    expect(parseChat({ channel: "mafia", text: "hi" }).ok).toBe(true);
+    expect(parseChat({ text: 5 }).ok).toBe(false);
+    expect(parseReaction({ reaction: "dancing" }).ok).toBe(false);
+    expect(parseReaction({ reaction: "laughing" })).toEqual({ ok: true, value: { reaction: "laughing" } });
+    // a client can't pick the channel: whatever it sends is dropped
+    expect(parseChat({ channel: "mafia", text: "hi" })).toEqual({ ok: true, value: { text: "hi" } });
     expect(parseTimeSync({ clientSentAt: Number.NaN }).ok).toBe(false);
     expect(parseResume({ roomCode: "ABCD", sessionToken: "short" }).ok).toBe(false);
     expect(parseResume({ roomCode: "PARTY22", sessionToken: "a".repeat(32) }).ok).toBe(true);

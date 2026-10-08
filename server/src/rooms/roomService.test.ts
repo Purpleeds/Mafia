@@ -242,15 +242,15 @@ describe("chat", () => {
     const room = await startedRoom(env, 8);
     const [m1, m2] = room.withRole("mafia") as [string, string];
     const [villager] = room.withRole("villager") as [string];
-    const early = await env.service.sendChat(room.code, m1, "mafia", "too early"); // still ROLE_REVEAL
+    const early = await env.service.sendChat(room.code, m1, "too early"); // still ROLE_REVEAL
     expect(!early.ok && early.error.code).toBe("CHAT_NOT_ALLOWED");
     await env.fireTimer(room.code); // NIGHT
-    must(await env.service.sendChat(room.code, m1, "mafia", "Take Player 3"));
+    must(await env.service.sendChat(room.code, m1, "Take Player 3"));
     expect(env.broadcaster.chatsTo(m2).map((m) => m.text)).toContain("Take Player 3");
     expect(env.broadcaster.chatsTo(villager)).toEqual([]);
-    const blocked = await env.service.sendChat(room.code, villager, "mafia", "let me in");
+    const blocked = await env.service.sendChat(room.code, villager, "let me in");
     expect(!blocked.ok && blocked.error.code).toBe("CHAT_NOT_ALLOWED");
-    const silent = await env.service.sendChat(room.code, villager, "public", "anyone?");
+    const silent = await env.service.sendChat(room.code, villager, "anyone?");
     expect(!silent.ok && silent.error.code).toBe("CHAT_NOT_ALLOWED");
   });
 
@@ -260,7 +260,7 @@ describe("chat", () => {
     const [m1, m2] = room.withRole("mafia") as [string, string];
     const [villager] = room.withRole("villager") as [string];
     await env.fireTimer(room.code); // NIGHT
-    must(await env.service.sendChat(room.code, m1, "mafia", "secret plan"));
+    must(await env.service.sendChat(room.code, m1, "secret plan"));
     must(await env.service.sendSnapshot(room.code, villager));
     must(await env.service.sendSnapshot(room.code, m2));
     const historyOf = (id: string) =>
@@ -272,11 +272,11 @@ describe("chat", () => {
   it("cleans and bounds message text", async () => {
     const env = makeService();
     const { code, ids } = await roomWith(env, 2);
-    must(await env.service.sendChat(code, ids[0] ?? "", "public", "  hi\u0000 \n there  "));
+    must(await env.service.sendChat(code, ids[0] ?? "", "  hi\u0000 \n there  "));
     expect(env.broadcaster.chatsTo(ids[1] ?? "").at(-1)?.text).toBe("hi there");
-    const empty = await env.service.sendChat(code, ids[0] ?? "", "public", "   ");
+    const empty = await env.service.sendChat(code, ids[0] ?? "", "   ");
     expect(!empty.ok && empty.error.code).toBe("BAD_REQUEST");
-    const long = await env.service.sendChat(code, ids[0] ?? "", "public", "x".repeat(301));
+    const long = await env.service.sendChat(code, ids[0] ?? "", "x".repeat(301));
     expect(long.ok).toBe(false);
   });
 
@@ -285,11 +285,84 @@ describe("chat", () => {
     const room = await startedRoom(env, 8);
     const [m1] = room.withRole("mafia") as [string];
     await env.fireTimer(room.code);
-    must(await env.service.sendChat(room.code, m1, "mafia", "zebra-plan"));
+    must(await env.service.sendChat(room.code, m1, "zebra-plan"));
     const all = env.logger.lines.join("\n");
     expect(all).not.toContain("zebra-plan");
     for (const role of ["villager", "detective", "doctor"]) expect(all).not.toContain(role);
     for (const s of room.sessions) expect(all).not.toContain(s.sessionToken);
+  });
+});
+
+describe("chat routing and reactions", () => {
+  /** A started 8-player room moved on to the day discussion, with one villager eliminated. */
+  async function dayRoom() {
+    const env = makeService();
+    const room = await startedRoom(env, 8);
+    const [mafia] = room.withRole("mafia") as [string];
+    const [dead, living] = room.withRole("villager") as [string, string];
+    await env.fireTimer(room.code); // NIGHT
+    await env.fireTimer(room.code); // NIGHT_RESULTS
+    await env.fireTimer(room.code); // DAY_DISCUSSION
+    const stored = await env.store.get(room.code);
+    expect(stored?.state.phase).toBe("DAY_DISCUSSION");
+    const victim = stored?.state.players.find((p) => p.id === dead);
+    if (!victim) throw new Error("no victim");
+    victim.alive = false;
+    await env.store.save(stored as NonNullable<typeof stored>);
+    return { env, room, mafia, dead, living };
+  }
+
+  it("sends a living player's day message to the public channel, whatever role they have", async () => {
+    const { env, room, mafia, living } = await dayRoom();
+    must(await env.service.sendChat(room.code, mafia, "I'm just a villager"));
+    const seen = env.broadcaster.chatsTo(living).at(-1);
+    expect(seen).toMatchObject({ channel: "public", text: "I'm just a villager" });
+  });
+
+  it("keeps eliminated players' messages in the spectator channel, away from the living", async () => {
+    const { env, room, dead, living } = await dayRoom();
+    must(await env.service.sendChat(room.code, dead, "it was the quiet one"));
+    expect(env.broadcaster.chatsTo(living).map((m) => m.text)).not.toContain("it was the quiet one");
+    expect(env.broadcaster.chatsTo(dead).at(-1)).toMatchObject({ channel: "graveyard" });
+    // and the living can't hear it later either
+    must(await env.service.sendSnapshot(room.code, living));
+    const history = env.broadcaster.to(living).filter((x) => x.kind === "history");
+    expect(JSON.stringify(history)).not.toContain("quiet one");
+  });
+
+  it("sends reactions the same way, and they never carry text", async () => {
+    const { env, room, dead, living, mafia } = await dayRoom();
+    must(await env.service.sendReaction(room.code, living, "suspicious"));
+    expect(env.broadcaster.chatsTo(mafia).at(-1)).toMatchObject({ channel: "public", reaction: "suspicious", text: "" });
+    must(await env.service.sendReaction(room.code, dead, "laughing"));
+    expect(env.broadcaster.chatsTo(living).some((m) => m.reaction === "laughing")).toBe(false);
+    expect(env.broadcaster.chatsTo(dead).at(-1)).toMatchObject({ channel: "graveyard", reaction: "laughing" });
+    const bad = await env.service.sendReaction(room.code, living, "dancing" as never);
+    expect(!bad.ok && bad.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("locks every channel at night except the Mafia's, for typed text and reactions alike", async () => {
+    const env = makeService();
+    const room = await startedRoom(env, 8);
+    const [m1, m2] = room.withRole("mafia") as [string, string];
+    const [villager] = room.withRole("villager") as [string];
+    for (const id of [m1, villager]) {
+      const early = await env.service.sendReaction(room.code, id, "thinking"); // role reveal
+      expect(!early.ok && early.error.code).toBe("CHAT_NOT_ALLOWED");
+    }
+    await env.fireTimer(room.code); // NIGHT
+    const shut = await env.service.sendReaction(room.code, villager, "thinking");
+    expect(!shut.ok && shut.error.code).toBe("CHAT_NOT_ALLOWED");
+    must(await env.service.sendReaction(room.code, m1, "thinking"));
+    expect(env.broadcaster.chatsTo(m2).at(-1)).toMatchObject({ channel: "mafia", reaction: "thinking" });
+    expect(env.broadcaster.chatsTo(villager)).toEqual([]);
+  });
+
+  it("limits message length to the maximum", async () => {
+    const { env, room, living } = await dayRoom();
+    must(await env.service.sendChat(room.code, living, "x".repeat(300)));
+    const long = await env.service.sendChat(room.code, living, "x".repeat(301));
+    expect(!long.ok && long.error.code).toBe("BAD_REQUEST");
   });
 });
 

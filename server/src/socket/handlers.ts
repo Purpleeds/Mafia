@@ -15,6 +15,7 @@ import type { RateCategory, RateLimiter } from "./rateLimiter.js";
 import { playerRoom, type MafiaServer, type MafiaSocket } from "./types.js";
 import {
   parseChat,
+  parseReaction,
   parseCreateRoom,
   parseEmpty,
   parseJoinRoom,
@@ -385,7 +386,10 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
     );
 
     on("chat:send", { category: "chat", parse: parseChat }, (p) =>
-      withSession((s) => service.sendChat(s.roomCode, s.playerId, p.channel, p.text)),
+      withSession((s) => service.sendChat(s.roomCode, s.playerId, p.text)),
+    )
+    on("chat:react", { category: "chat", parse: parseReaction }, (p) =>
+      withSession((s) => service.sendReaction(s.roomCode, s.playerId, p.reaction)),
     );
 
     on("narrator:submit", { category: "gameAction", parse: parseNarratorSubmit }, (p) =>

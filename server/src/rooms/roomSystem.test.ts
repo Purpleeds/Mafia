@@ -204,8 +204,8 @@ describe("chat privacy", () => {
   it("uses random message ids, so gaps can't reveal hidden chat", async () => {
     const env = makeService();
     const room = await lobby(env, 2);
-    must(await env.service.sendChat(room.roomCode, room.ids[0] ?? "", "public", "one"));
-    must(await env.service.sendChat(room.roomCode, room.ids[0] ?? "", "public", "two"));
+    must(await env.service.sendChat(room.roomCode, room.ids[0] ?? "", "one"));
+    must(await env.service.sendChat(room.roomCode, room.ids[0] ?? "", "two"));
     const ids = env.broadcaster.chatsTo(room.ids[1] ?? "").map((m) => m.id);
     for (const id of ids) expect(id).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -215,7 +215,7 @@ describe("chat privacy", () => {
     const room = await started(env, 8);
     const [m1, m2] = room.withRole("mafia") as [string, string];
     await env.fireTimer(room.roomCode); // NIGHT
-    must(await env.service.sendChat(room.roomCode, m2, "mafia", "before"));
+    must(await env.service.sendChat(room.roomCode, m2, "before"));
     const stored = await env.store.get(room.roomCode);
     const dead = stored?.state.players.find((p) => p.id === m1);
     if (!stored || !dead) throw new Error("missing");

@@ -154,6 +154,40 @@ const ICONS = {
       <path d="M16.5 9.5 L21.5 14.5 M21.5 9.5 L16.5 14.5" />
     </>
   ),
+  thinking: (
+    <>
+      <circle cx={11} cy={13} r={7.5} />
+      <circle cx={8.5} cy={11.5} r={0.9} {...F} />
+      <circle cx={13.5} cy={11.5} r={0.9} {...F} />
+      <path d="M8.5 16 H13.5" />
+      <circle cx={19} cy={5.5} r={1.2} {...F} />
+      <circle cx={21} cy={2.8} r={0.8} {...F} />
+    </>
+  ),
+  suspicious: (
+    <>
+      <circle cx={12} cy={12} r={9} />
+      <path d="M6.8 9.6 H10.6 M13.4 9.6 H17.2" />
+      <circle cx={9.6} cy={11.2} r={0.9} {...F} />
+      <circle cx={16.2} cy={11.2} r={0.9} {...F} />
+      <path d="M8.5 16.2 L15.5 15" />
+    </>
+  ),
+  laughing: (
+    <>
+      <circle cx={12} cy={12} r={9} />
+      <path d="M6.8 10.5 q1.6 -2.2 3.2 0 M14 10.5 q1.6 -2.2 3.2 0" />
+      <path d="M7.5 14 H16.5 a4.5 4.5 0 0 1 -9 0 Z" />
+    </>
+  ),
+  shocked: (
+    <>
+      <circle cx={12} cy={12} r={9} />
+      <circle cx={9} cy={10} r={1.1} {...F} />
+      <circle cx={15} cy={10} r={1.1} {...F} />
+      <ellipse cx={12} cy={16} rx={2} ry={2.6} />
+    </>
+  ),
   info: (
     <>
       <circle cx={12} cy={12} r={9} />

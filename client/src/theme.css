@@ -339,3 +339,8 @@ h1, h2, h3,
 @media (prefers-reduced-motion: reduce) {
   .thinking-dots span { animation: none; opacity: 0.7; }
 }
+
+/* ------------------------------------------------------------------ quick reactions */
+.reaction-bar { display: flex; gap: 8px; justify-content: space-between; }
+.reaction-btn { flex: 1; min-width: var(--tap); padding: 0; }
+.chat-reaction { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
