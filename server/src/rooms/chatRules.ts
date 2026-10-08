@@ -14,19 +14,24 @@ export function sanitizeChatText(raw: string): string | null {
 }
 
 /**
- * Which stored messages a player is shown when they (re)join. Live delivery
- * uses the stricter phase-aware canRead(); history only needs to stop players
- * from seeing channels they were never part of.
+ * Which stored messages someone is shown when they (re)join. Live delivery uses
+ * the engine's phase-aware canRead(); history follows the same membership rules:
+ * Mafia chat only for living Mafia, the graveyard only for the eliminated and
+ * spectators while a game runs.
  */
-export function canSeeInHistory(state: GameState, playerId: string, message: ChatMessage): boolean {
-  const player = state.players.find((p) => p.id === playerId);
-  if (!player) return false;
+export function canSeeInHistory(state: GameState, memberId: string, message: ChatMessage): boolean {
+  const inGame = state.phase !== "LOBBY" && state.phase !== "GAME_OVER";
+  if (state.spectators.some((s) => s.id === memberId)) {
+    return message.channel === "public" || (message.channel === "graveyard" && inGame);
+  }
+  const player = state.players.find((p) => p.id === memberId);
+  if (!player || player.kicked) return false;
   switch (message.channel) {
     case "public":
       return true;
     case "mafia":
-      return player.role === "mafia";
+      return player.role === "mafia" && player.alive;
     case "graveyard":
-      return !player.alive && state.phase !== "LOBBY";
+      return !player.alive && inGame;
   }
 }

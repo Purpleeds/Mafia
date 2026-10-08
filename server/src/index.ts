@@ -21,6 +21,9 @@ const server = createMafiaServer({
   trustProxyHops,
 });
 
+// Re-arm timers for rooms a persistent store kept across a restart (none with the in-memory store).
+void server.service.recover().catch((err: unknown) => logger.error("rooms.recover_failed", {}, err));
+
 server.httpServer.listen(port, "0.0.0.0", () => {
   logger.info("server.listening", { port, node: process.version, trustProxyHops });
 });

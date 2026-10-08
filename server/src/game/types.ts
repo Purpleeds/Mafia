@@ -1,4 +1,5 @@
 import type {
+  Avatar,
   DeathCause,
   GameError,
   GameSettings,
@@ -19,6 +20,8 @@ export interface GameState {
   hostId: string | null;
   /** In join order. */
   players: PlayerState[];
+  /** People who joined while a game was running; they become players at the next game. */
+  spectators: SpectatorState[];
   /** Night/day cycle number; 0 until the first night starts. */
   round: number;
   /** Epoch ms at which the current phase times out, or null (lobby, game over). */
@@ -41,10 +44,20 @@ export interface GameState {
 export interface PlayerState {
   id: string;
   name: string;
+  avatar: Avatar;
   role: Role | null;
   alive: boolean;
   connected: boolean;
   ackedRole: boolean;
+  /** Removed by the host mid-game: out of the game, but kept in the list. */
+  kicked: boolean;
+}
+
+export interface SpectatorState {
+  id: string;
+  name: string;
+  avatar: Avatar;
+  connected: boolean;
 }
 
 export interface NightState {
@@ -93,11 +106,15 @@ export interface Investigation {
 }
 
 export type GameAction =
-  | { type: "JOIN"; playerId: string; name: string }
+  /** In the lobby you join as a player; while a game is running, as a spectator. */
+  | { type: "JOIN"; playerId: string; name: string; avatar: Avatar }
   | { type: "LEAVE"; playerId: string }
   | { type: "DISCONNECT"; playerId: string }
   | { type: "RECONNECT"; playerId: string }
   | { type: "UPDATE_SETTINGS"; playerId: string; settings: unknown }
+  | { type: "UPDATE_PROFILE"; playerId: string; name?: string; avatar?: Avatar }
+  | { type: "KICK"; playerId: string; targetId: string }
+  | { type: "TRANSFER_HOST"; playerId: string; targetId: string }
   | { type: "START_GAME"; playerId: string }
   | { type: "ACK_ROLE"; playerId: string }
   | { type: "NIGHT_ACTION"; playerId: string; targetId: string; secondTargetId?: string }

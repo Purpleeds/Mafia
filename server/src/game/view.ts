@@ -4,12 +4,13 @@ import type {
   NightActionView,
   PublicPlayerView,
   Role,
+  SpectatorView,
   VoteRoundSummaryView,
   YouView,
 } from "@mafia/shared";
 import { availableNightAction } from "./night.js";
-import { findPlayer, has } from "./state.js";
-import type { DeathRecord, GameState, PlayerState } from "./types.js";
+import { findPlayer, findSpectator, has } from "./state.js";
+import type { DeathRecord, GameState, PlayerState, SpectatorState } from "./types.js";
 import { validVoteTargets } from "./voting.js";
 
 /**
@@ -19,6 +20,7 @@ import { validVoteTargets } from "./voting.js";
  */
 export function getGameView(state: GameState, viewerId: string): GameView {
   const viewer = findPlayer(state, viewerId);
+  const spectator = viewer ? undefined : findSpectator(state, viewerId);
   const gameOver = state.phase === "GAME_OVER";
 
   const publicRole = (p: PlayerState): Role | null =>
@@ -33,9 +35,12 @@ export function getGameView(state: GameState, viewerId: string): GameView {
   const players: PublicPlayerView[] = state.players.map((p) => ({
     id: p.id,
     name: p.name,
+    avatar: { ...p.avatar },
     alive: p.alive,
     connected: p.connected,
+    connection: p.connected ? "online" : "offline",
     isHost: p.id === state.hostId,
+    kicked: p.kicked,
     role: publicRole(p),
     done:
       state.phase === "ROLE_REVEAL"
@@ -43,6 +48,14 @@ export function getGameView(state: GameState, viewerId: string): GameView {
         : state.phase === "VOTING" && state.voting !== null
           ? has(state.voting.ballots, p.id)
           : false,
+  }));
+
+  const spectators: SpectatorView[] = state.spectators.map((p) => ({
+    id: p.id,
+    name: p.name,
+    avatar: { ...p.avatar },
+    connected: p.connected,
+    connection: p.connected ? "online" : "offline",
   }));
 
   const nightReport = state.nightReport
@@ -75,7 +88,8 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     phaseEndsAt: state.phaseEndsAt,
     mafiaCount: state.mafiaCount,
     players,
-    you: viewer ? buildYou(state, viewer) : null,
+    spectators,
+    you: viewer ? buildYou(state, viewer) : spectator ? spectatorYou(state, spectator) : null,
     nightReport,
     voteReport,
     voting,
@@ -111,13 +125,32 @@ function buildYou(state: GameState, viewer: PlayerState): YouView {
   return {
     id: viewer.id,
     name: viewer.name,
+    avatar: { ...viewer.avatar },
     role: viewer.role,
     alive: viewer.alive,
     isHost: viewer.id === state.hostId,
+    isSpectator: false,
     teammateIds,
     loverIds: knowsLovers && state.lovers ? [...state.lovers] : null,
     investigations: viewer.role === "detective" ? state.investigations.map((i) => ({ ...i })) : [],
     nightAction: state.phase === "NIGHT" ? buildNightAction(state, viewer) : null,
+  };
+}
+
+/** A spectator learns nothing beyond the public view. */
+function spectatorYou(state: GameState, spectator: SpectatorState): YouView {
+  return {
+    id: spectator.id,
+    name: spectator.name,
+    avatar: { ...spectator.avatar },
+    role: null,
+    alive: false,
+    isHost: false,
+    isSpectator: true,
+    teammateIds: [],
+    loverIds: state.phase === "GAME_OVER" && state.lovers ? [...state.lovers] : null,
+    investigations: [],
+    nightAction: null,
   };
 }
 

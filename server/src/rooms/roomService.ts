@@ -1,13 +1,23 @@
-import type {
-  ChatChannel,
-  ChatHistoryPayload,
-  ChatMessage,
-  ErrorCode,
-  ErrorPayload,
-  GameStatePayload,
-  RemovedPayload,
-  RemovedReason,
-  SessionInfo,
+import { randomUUID } from "node:crypto";
+import {
+  MAX_PLAYERS,
+  MAX_SPECTATORS,
+  containsProfanity,
+  validateCustomRoomCode,
+  validateRoomPassword,
+  type Avatar,
+  type ChatChannel,
+  type ChatHistoryPayload,
+  type ChatMessage,
+  type ErrorCode,
+  type ErrorPayload,
+  type GameStatePayload,
+  type GameView,
+  type RemovedPayload,
+  type RemovedReason,
+  type RoomInfo,
+  type RoomPreview,
+  type SessionInfo,
 } from "@mafia/shared";
 import {
   applyAction,
@@ -22,8 +32,9 @@ import {
 } from "../game/index.js";
 import type { Logger } from "../logger.js";
 import { MAX_CHAT_HISTORY, canSeeInHistory, sanitizeChatText } from "./chatRules.js";
-import { generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
+import { digest, generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
 import { KeyedMutex } from "./keyedMutex.js";
+import { hashPassword, verifyPassword } from "./passwords.js";
 import type { RoomStore } from "./roomStore.js";
 import type { Scheduler } from "./scheduler.js";
 import type { Room } from "./types.js";
@@ -33,14 +44,21 @@ export interface Broadcaster {
   state(roomCode: string, playerId: string, payload: GameStatePayload): void;
   chat(roomCode: string, playerId: string, message: ChatMessage): void;
   chatHistory(roomCode: string, playerId: string, payload: ChatHistoryPayload): void;
-  /** Tell the player they're out of the room and stop sending them anything from it. */
+  /** Tell the member they're out of the room and stop sending them anything from it. */
   removed(roomCode: string, playerId: string, payload: RemovedPayload): void;
 }
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ErrorPayload };
 
-/** Actions a player may trigger (JOIN goes through joinRoom, TICK comes from the timer). */
+/** Actions a member may trigger (JOIN goes through joinRoom, TICK comes from the timer). */
 export type PlayerAction = Exclude<GameAction, { type: "JOIN" } | { type: "TICK" }>;
+
+export interface CreateRoomOptions {
+  customCode?: string;
+  password?: string;
+  /** Identifies the creator (a hash of their IP); limits how many rooms one creator keeps open. */
+  ownerKey?: string;
+}
 
 export interface RoomServiceOptions {
   store: RoomStore;
@@ -51,11 +69,15 @@ export interface RoomServiceOptions {
   rng?: Rng;
   generateCode?: () => string;
   maxRooms?: number;
-  /** Close a room this long after its last player disconnected. */
+  /** Rooms one creator (ownerKey) may have open at once. */
+  maxRoomsPerOwner?: number;
+  /** Close a room this long after its last member disconnected. */
   emptyRoomTtlMs?: number;
   /** Close a room nobody has touched for this long. */
   idleRoomTtlMs?: number;
-  /** Remove a lobby player who has been disconnected this long. */
+  /** Same, for a room still in its lobby. */
+  idleLobbyTtlMs?: number;
+  /** Remove a lobby player (or any spectator) who has been disconnected this long. */
   lobbyDropMs?: number;
 }
 
@@ -67,13 +89,25 @@ const fail = <T = never>(code: ErrorCode, message: string): ServiceResult<T> => 
 
 const REMOVED_MESSAGES: Record<RemovedReason, string> = {
   left: "You left the room.",
-  dropped: "You were removed from the room because you were disconnected.",
+  kicked: "The host removed you from the room.",
+  dropped: "You were removed from the room because you were away too long.",
   room_closed: "This room has closed.",
 };
 
+/** Game-rule rejections that would hint at someone's role if logged next to their id. */
+const QUIET_REJECTIONS = new Set<ErrorCode>(["NO_ABILITY", "INVALID_TARGET", "REPEAT_PROTECTION", "DEAD_PLAYER"]);
+
+function memberIds(state: GameState): string[] {
+  return [...state.players.map((p) => p.id), ...state.spectators.map((p) => p.id)];
+}
+
+function findMember(state: GameState, id: string) {
+  return state.players.find((p) => p.id === id) ?? state.spectators.find((p) => p.id === id);
+}
+
 /**
  * Owns every room: applies actions to the pure engine, persists the result,
- * runs phase timers, and sends each player only their own view.
+ * runs phase timers, and sends each member only their own view.
  *
  * All work on a room runs inside a per-room lock, so events for the same room
  * are handled strictly one after another.
@@ -87,10 +121,14 @@ export class RoomService {
   private readonly rng: Rng;
   private readonly generateCode: () => string;
   private readonly maxRooms: number;
+  private readonly maxRoomsPerOwner: number;
   private readonly emptyRoomTtlMs: number;
   private readonly idleRoomTtlMs: number;
+  private readonly idleLobbyTtlMs: number;
   private readonly lobbyDropMs: number;
   private readonly mutex = new KeyedMutex();
+  /** ownerKey -> codes of their open rooms (rebuilt by recover()). */
+  private readonly roomsByOwner = new Map<string, Set<string>>();
 
   constructor(options: RoomServiceOptions) {
     this.store = options.store;
@@ -101,123 +139,234 @@ export class RoomService {
     this.rng = options.rng ?? cryptoRng;
     this.generateCode = options.generateCode ?? generateRoomCode;
     this.maxRooms = options.maxRooms ?? 1000;
+    this.maxRoomsPerOwner = options.maxRoomsPerOwner ?? 5;
     this.emptyRoomTtlMs = options.emptyRoomTtlMs ?? 10 * 60_000;
     this.idleRoomTtlMs = options.idleRoomTtlMs ?? 3 * 60 * 60_000;
+    this.idleLobbyTtlMs = options.idleLobbyTtlMs ?? 30 * 60_000;
     this.lobbyDropMs = options.lobbyDropMs ?? 2 * 60_000;
   }
 
   // ------------------------------------------------------------ joining
 
-  async createRoom(name: string): Promise<ServiceResult<SessionInfo>> {
+  async createRoom(name: string, avatar: Avatar, options: CreateRoomOptions = {}): Promise<ServiceResult<SessionInfo>> {
     if ((await this.store.count()) >= this.maxRooms) {
       this.logger.warn("room.create_refused", { reason: "max_rooms", max: this.maxRooms });
       return fail("SERVER_BUSY", "The server is full right now. Please try again in a few minutes.");
     }
+    const owner = options.ownerKey ?? null;
+    if (owner !== null && (this.roomsByOwner.get(owner)?.size ?? 0) >= this.maxRoomsPerOwner) {
+      this.logger.warn("room.create_refused", { reason: "owner_limit", max: this.maxRoomsPerOwner });
+      return fail("SERVER_BUSY", "You already have several rooms open. Close one before making another.");
+    }
+
+    let customCode: string | null = null;
+    if (options.customCode !== undefined && options.customCode.trim() !== "") {
+      const checked = validateCustomRoomCode(options.customCode);
+      if (!checked.ok) return fail("CODE_INVALID", checked.reason);
+      customCode = checked.value;
+    }
+
+    let passwordHash: string | null = null;
+    if (options.password !== undefined && options.password !== "") {
+      const checked = validateRoomPassword(options.password);
+      if (!checked.ok) return fail("BAD_REQUEST", checked.reason);
+      passwordHash = await hashPassword(checked.value);
+    }
+
     const now = this.clock();
     const playerId = newPlayerId();
     const sessionToken = newSessionToken();
-    const joined = applyAction(createLobby(), { type: "JOIN", playerId, name }, this.context());
+    const joined = applyAction(createLobby(), { type: "JOIN", playerId, name, avatar }, this.context());
     if (!joined.ok) return { ok: false, error: joined.error };
+
+    const makeRoom = (code: string): Room => ({
+      code,
+      state: joined.state,
+      passwordHash,
+      ownerKey: owner,
+      sessions: { [hashToken(sessionToken)]: playerId },
+      chat: [],
+      createdAt: now,
+      lastActivityAt: now,
+      emptySince: null,
+      disconnectedAt: {},
+      reconnecting: {},
+      delivery: {},
+    });
+    const created = (code: string): ServiceResult<SessionInfo> => {
+      if (owner !== null) this.indexOwner(owner, code);
+      this.logger.info("room.created", {
+        room: code,
+        player: playerId,
+        customCode: customCode !== null,
+        private: passwordHash !== null,
+      });
+      return ok({ roomCode: code, playerId, sessionToken, seat: "player" });
+    };
+
+    if (customCode !== null) {
+      if (!(await this.store.create(makeRoom(customCode)))) {
+        return fail("CODE_TAKEN", "That room code is already in use. Try another.");
+      }
+      return created(customCode);
+    }
 
     for (let attempt = 0; attempt < 50; attempt++) {
       const code = this.generateCode();
-      const room: Room = {
-        code,
-        state: joined.state,
-        version: 1,
-        sessions: { [hashToken(sessionToken)]: playerId },
-        chat: [],
-        nextMessageId: 1,
-        createdAt: now,
-        lastActivityAt: now,
-        emptySince: null,
-        disconnectedAt: {},
-      };
-      if (await this.store.create(room)) {
-        this.logger.info("room.created", { room: code, player: playerId, rooms: await this.store.count() });
-        return ok({ roomCode: code, playerId, sessionToken });
-      }
+      if (containsProfanity(code)) continue;
+      if (await this.store.create(makeRoom(code))) return created(code);
     }
     this.logger.error("room.create_failed", { reason: "no_free_code" });
     return fail("SERVER_BUSY", "Couldn't find a free room code. Please try again.");
   }
 
-  joinRoom(code: string, name: string): Promise<ServiceResult<SessionInfo>> {
+  /** What the join screen needs before asking for a name. Changes nothing. */
+  peek(code: string): Promise<ServiceResult<RoomPreview>> {
     return this.withRoom(code, async (room) => {
+      const { state } = room;
+      const stage = state.phase === "LOBBY" ? "lobby" : state.phase === "GAME_OVER" ? "game_over" : "in_game";
+      const joinAs = stage === "lobby" ? "player" : "spectator";
+      return ok({
+        roomCode: code,
+        hasPassword: room.passwordHash !== null,
+        stage,
+        playerCount: state.players.length,
+        maxPlayers: MAX_PLAYERS,
+        joinAs,
+        isFull: joinAs === "player" ? state.players.length >= MAX_PLAYERS : state.spectators.length >= MAX_SPECTATORS,
+      });
+    });
+  }
+
+  /** Joins as a player in the lobby, or as a spectator once a game has started. */
+  joinRoom(code: string, name: string, avatar: Avatar, password?: string): Promise<ServiceResult<SessionInfo>> {
+    return this.withRoom(code, async (room) => {
+      if (room.passwordHash !== null) {
+        if (!password) return fail("PASSWORD_REQUIRED", "This room is private. Enter its password to join.");
+        if (!(await verifyPassword(password, room.passwordHash))) {
+          this.logger.warn("room.wrong_password", { room: code });
+          return fail("WRONG_PASSWORD", "That password isn't right.");
+        }
+      }
       const playerId = newPlayerId();
       const sessionToken = newSessionToken();
-      const prev = this.apply(room, { type: "JOIN", playerId, name });
+      const prev = this.apply(room, { type: "JOIN", playerId, name, avatar });
       if (!prev.ok) return prev;
       room.sessions[hashToken(sessionToken)] = playerId;
       await this.commit(room, prev.value);
-      this.logger.info("player.joined", { room: code, player: playerId, players: room.state.players.length });
-      return ok({ roomCode: code, playerId, sessionToken });
+      const seat = room.state.players.some((p) => p.id === playerId) ? "player" : "spectator";
+      this.logger.info("player.joined", { room: code, player: playerId, seat, players: room.state.players.length });
+      return ok({ roomCode: code, playerId, sessionToken, seat });
     });
   }
 
-  /** Finds the player a session token belongs to. Doesn't change anything. */
+  /** Finds the member a session token belongs to. Doesn't change anything. */
   resumeSession(code: string, sessionToken: string): Promise<ServiceResult<SessionInfo>> {
     return this.withRoom(code, async (room) => {
       const hashed = hashToken(sessionToken);
-      const playerId = Object.hasOwn(room.sessions, hashed) ? room.sessions[hashed] : undefined;
-      if (!playerId || !room.state.players.some((p) => p.id === playerId)) {
+      const memberId = Object.hasOwn(room.sessions, hashed) ? room.sessions[hashed] : undefined;
+      const member = memberId === undefined ? undefined : findMember(room.state, memberId);
+      if (!memberId || !member || ("kicked" in member && member.kicked)) {
         return fail("SESSION_INVALID", "That session has expired. Please join again.");
       }
-      return ok({ roomCode: code, playerId, sessionToken });
+      const seat = room.state.players.some((p) => p.id === memberId) ? "player" : "spectator";
+      return ok({ roomCode: code, playerId: memberId, sessionToken, seat });
     });
   }
 
-  /** Called by the connection layer when a player's connection comes or goes. */
-  setConnected(code: string, playerId: string, connected: boolean): Promise<ServiceResult<null>> {
+  /**
+   * A member's connection dropped. They stay present for the grace period
+   * (shown as "reconnecting") before setConnected(false) marks them gone.
+   */
+  markReconnecting(code: string, memberId: string): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
-      const player = room.state.players.find((p) => p.id === playerId);
-      if (!player) return fail("NOT_IN_ROOM", "You are not in this room.");
-      if (player.connected === connected) return ok(null);
-      const prev = this.apply(room, { type: connected ? "RECONNECT" : "DISCONNECT", playerId });
-      if (!prev.ok) return prev;
-      if (connected) delete room.disconnectedAt[playerId];
-      else room.disconnectedAt[playerId] = this.clock();
-      await this.commit(room, prev.value);
-      this.logger.info(connected ? "player.reconnected" : "player.disconnected", { room: code, player: playerId });
+      const member = findMember(room.state, memberId);
+      if (!member) return fail("NOT_IN_ROOM", "You are not in this room.");
+      if (!member.connected || room.reconnecting[memberId] !== undefined) return ok(null);
+      room.reconnecting[memberId] = this.clock();
+      await this.publish(room);
       return ok(null);
     });
   }
 
-  leave(code: string, playerId: string): Promise<ServiceResult<null>> {
+  /** Called by the connection layer when a member is back, or gone for good (after the grace period). */
+  setConnected(code: string, memberId: string, connected: boolean): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
-      const prev = this.apply(room, { type: "LEAVE", playerId });
+      const member = findMember(room.state, memberId);
+      if (!member) return fail("NOT_IN_ROOM", "You are not in this room.");
+      const wasReconnecting = room.reconnecting[memberId] !== undefined;
+      delete room.reconnecting[memberId];
+      if (member.connected === connected) {
+        if (wasReconnecting) await this.publish(room);
+        return ok(null);
+      }
+      const prev = this.apply(room, { type: connected ? "RECONNECT" : "DISCONNECT", playerId: memberId });
       if (!prev.ok) return prev;
+      if (connected) delete room.disconnectedAt[memberId];
+      else room.disconnectedAt[memberId] = this.clock();
+      await this.commit(room, prev.value, { activity: connected });
+      this.logger.info(connected ? "player.reconnected" : "player.disconnected", { room: code, player: memberId });
+      return ok(null);
+    });
+  }
+
+  leave(code: string, memberId: string): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      const prev = this.apply(room, { type: "LEAVE", playerId: memberId });
+      if (!prev.ok) return prev;
+      delete room.reconnecting[memberId];
       await this.commit(room, prev.value, { removedReason: "left" });
-      this.logger.info("player.left", { room: code, player: playerId, phase: room.state.phase });
+      this.logger.info("player.left", { room: code, player: memberId, phase: room.state.phase });
+      return ok(null);
+    });
+  }
+
+  /** Host only: set (or with null, remove) the room password. */
+  setPassword(code: string, memberId: string, password: string | null): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (room.state.hostId !== memberId) return fail("NOT_HOST", "Only the host can change the password.");
+      if (password === null || password === "") {
+        room.passwordHash = null;
+      } else {
+        const checked = validateRoomPassword(password);
+        if (!checked.ok) return fail("BAD_REQUEST", checked.reason);
+        room.passwordHash = await hashPassword(checked.value);
+      }
+      room.lastActivityAt = this.clock();
+      await this.publish(room);
+      this.logger.info("room.password_changed", { room: code, private: room.passwordHash !== null });
       return ok(null);
     });
   }
 
   // ------------------------------------------------------------ playing
 
-  /** Applies a player's action. The engine checks phase, life, role and target. */
+  /** Applies a member's action. The engine checks phase, host, life, role and target. */
   act(code: string, action: PlayerAction): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
       const prev = this.apply(room, action);
       if (!prev.ok) return prev;
-      await this.commit(room, prev.value);
+      await this.commit(room, prev.value, action.type === "KICK" ? { removedReason: "kicked" } : {});
+      if (action.type === "KICK") this.logger.info("player.kicked", { room: code, player: action.targetId });
+      if (action.type === "TRANSFER_HOST") this.logger.info("host.transferred", { room: code, to: action.targetId });
       return ok(null);
     });
   }
 
-  sendChat(code: string, playerId: string, channel: ChatChannel, rawText: string): Promise<ServiceResult<null>> {
+  sendChat(code: string, memberId: string, channel: ChatChannel, rawText: string): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
       const { state } = room;
-      const sender = state.players.find((p) => p.id === playerId);
+      const sender = findMember(state, memberId);
       if (!sender) return fail("NOT_IN_ROOM", "You are not in this room.");
-      if (!canWrite(state, playerId, channel)) {
+      if (!canWrite(state, memberId, channel)) {
         return fail("CHAT_NOT_ALLOWED", "You can't send messages there right now.");
       }
       const text = sanitizeChatText(rawText);
       if (text === null) return fail("BAD_REQUEST", "Messages must be 1–300 characters.");
 
       const message: ChatMessage = {
-        id: String(room.nextMessageId++),
+        // Random ids: a shared counter would reveal how much hidden-channel chat happened.
+        id: randomUUID(),
         channel,
         senderId: sender.id,
         senderName: sender.name,
@@ -229,20 +378,23 @@ export class RoomService {
       room.lastActivityAt = message.sentAt;
       await this.store.save(room);
 
-      for (const p of state.players) {
-        if (canRead(state, p.id, channel)) this.broadcaster.chat(code, p.id, message);
+      for (const id of memberIds(state)) {
+        if (canRead(state, id, channel)) this.broadcaster.chat(code, id, message);
       }
       return ok(null);
     });
   }
 
-  /** Sends one player their current view and the chat history they're allowed to see. */
-  sendSnapshot(code: string, playerId: string): Promise<ServiceResult<null>> {
+  /** Sends one member their current view and the chat history they're allowed to see. */
+  sendSnapshot(code: string, memberId: string): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
-      if (!room.state.players.some((p) => p.id === playerId)) return fail("NOT_IN_ROOM", "You are not in this room.");
-      this.broadcaster.state(code, playerId, this.statePayload(room, playerId, this.clock()));
-      this.broadcaster.chatHistory(code, playerId, {
-        messages: room.chat.filter((m) => canSeeInHistory(room.state, playerId, m)),
+      if (!findMember(room.state, memberId)) return fail("NOT_IN_ROOM", "You are not in this room.");
+      const now = this.clock();
+      const payload = this.prepareDelivery(room, memberId, now, true);
+      await this.store.save(room);
+      if (payload) this.broadcaster.state(code, memberId, payload);
+      this.broadcaster.chatHistory(code, memberId, {
+        messages: room.chat.filter((m) => canSeeInHistory(room.state, memberId, m)),
       });
       return ok(null);
     });
@@ -270,7 +422,10 @@ export class RoomService {
 
   // ------------------------------------------------------------ housekeeping
 
-  /** Closes abandoned rooms and removes long-disconnected lobby players. Run every minute or so. */
+  /**
+   * Closes rooms that have been empty for 10 minutes (or untouched for hours)
+   * and removes members who stayed away. Run every minute or so.
+   */
   async sweep(): Promise<void> {
     for (const code of await this.store.codes()) {
       try {
@@ -280,24 +435,27 @@ export class RoomService {
             await this.close(room, "empty");
             return ok(null);
           }
-          if (now - room.lastActivityAt >= this.idleRoomTtlMs) {
+          const idleLimit = room.state.phase === "LOBBY" ? this.idleLobbyTtlMs : this.idleRoomTtlMs;
+          if (now - room.lastActivityAt >= idleLimit) {
             await this.close(room, "idle");
             return ok(null);
           }
-          if (room.state.phase === "LOBBY") {
-            const stale = room.state.players.filter((p) => {
-              const since = room.disconnectedAt[p.id];
-              return !p.connected && since !== undefined && now - since >= this.lobbyDropMs;
-            });
-            if (stale.length > 0) {
-              const before = room.state;
-              for (const p of stale) {
-                const r = applyAction(room.state, { type: "LEAVE", playerId: p.id }, this.context());
-                if (r.ok) room.state = r.state;
-              }
-              await this.commit(room, before, { activity: false, removedReason: "dropped" });
-              this.logger.info("lobby.dropped_players", { room: code, count: stale.length });
+          const awayTooLong = (id: string, connected: boolean) => {
+            const since = room.disconnectedAt[id];
+            return !connected && since !== undefined && now - since >= this.lobbyDropMs;
+          };
+          const stale = [
+            ...(room.state.phase === "LOBBY" ? room.state.players : []),
+            ...room.state.spectators,
+          ].filter((m) => awayTooLong(m.id, m.connected));
+          if (stale.length > 0) {
+            const before = room.state;
+            for (const m of stale) {
+              const r = applyAction(room.state, { type: "LEAVE", playerId: m.id }, this.context());
+              if (r.ok) room.state = r.state;
             }
+            await this.commit(room, before, { activity: false, removedReason: "dropped" });
+            this.logger.info("room.dropped_absent", { room: code, count: stale.length });
           }
           return ok(null);
         });
@@ -305,6 +463,36 @@ export class RoomService {
         this.logger.error("sweep.failed", { room: code }, err);
       }
     }
+  }
+
+  /**
+   * After a server restart with a persistent store: no connections survived, so
+   * mark everyone disconnected and re-arm the phase timers. (A no-op for the
+   * in-memory store, which starts empty.)
+   */
+  async recover(): Promise<void> {
+    const codes = await this.store.codes();
+    for (const code of codes) {
+      await this.withRoom(code, async (room) => {
+        const now = this.clock();
+        for (const id of memberIds(room.state)) {
+          const member = findMember(room.state, id);
+          if (!member?.connected) continue;
+          const r = applyAction(room.state, { type: "DISCONNECT", playerId: id }, this.context());
+          if (r.ok) {
+            room.state = r.state;
+            room.disconnectedAt[id] = now;
+          }
+        }
+        room.reconnecting = {};
+        room.emptySince = room.emptySince ?? now;
+        if (room.ownerKey) this.indexOwner(room.ownerKey, room.code);
+        await this.store.save(room);
+        this.scheduleTimer(room);
+        return ok(null);
+      });
+    }
+    if (codes.length > 0) this.logger.info("rooms.recovered", { rooms: codes.length });
   }
 
   async roomCount(): Promise<number> {
@@ -328,13 +516,19 @@ export class RoomService {
   /** Runs an action through the engine. On success room.state is replaced and the old state returned. */
   private apply(room: Room, action: GameAction): ServiceResult<GameState> {
     const result = applyAction(room.state, action, this.context());
-    if (!result.ok) return { ok: false, error: result.error };
+    if (!result.ok) {
+      if (!QUIET_REJECTIONS.has(result.error.code)) {
+        // Never next to a member id for role-revealing codes (see QUIET_REJECTIONS).
+        this.logger.warn("action.rejected", { room: room.code, action: action.type, code: result.error.code });
+      }
+      return { ok: false, error: result.error };
+    }
     const prev = room.state;
     room.state = result.state;
     return ok(prev);
   }
 
-  /** Saves a changed room, then re-arms its timer and sends every player their new view. */
+  /** Saves a changed room, re-arms its timer, tells removed members, and sends everyone whose view changed. */
   private async commit(
     room: Room,
     prev: GameState,
@@ -342,15 +536,14 @@ export class RoomService {
   ): Promise<void> {
     const now = this.clock();
     const { state } = room;
-    room.version += 1;
     if (opts.activity !== false) room.lastActivityAt = now;
 
-    const remaining = new Set(state.players.map((p) => p.id));
-    const removed = prev.players.filter((p) => !remaining.has(p.id)).map((p) => p.id);
-    for (const playerId of removed) {
-      for (const [hash, owner] of Object.entries(room.sessions)) if (owner === playerId) delete room.sessions[hash];
-      delete room.disconnectedAt[playerId];
-    }
+    const remaining = new Set(memberIds(state));
+    const gone = memberIds(prev).filter((id) => !remaining.has(id));
+    const newlyKicked = state.players
+      .filter((p) => p.kicked && !prev.players.some((q) => q.id === p.id && q.kicked))
+      .map((p) => p.id);
+    for (const id of [...gone, ...newlyKicked]) this.forgetMember(room, id);
 
     if (prev.phase !== state.phase) {
       // A new game (or the lobby after one) starts with fresh private channels.
@@ -360,22 +553,86 @@ export class RoomService {
       this.logPhaseChange(room, prev);
     }
 
-    const connected = state.players.filter((p) => p.connected).length;
+    const connected = [...state.players.filter((p) => !p.kicked), ...state.spectators].filter((m) => m.connected).length;
     room.emptySince = connected > 0 ? null : (room.emptySince ?? now);
 
-    if (state.players.length === 0) {
-      await this.close(room, "empty", removed);
+    if (remaining.size === 0) {
+      await this.close(room, "empty", gone);
       return;
     }
 
+    const outgoing = this.prepareDeliveries(room, now);
     await this.store.save(room);
     this.scheduleTimer(room);
 
     const reason = opts.removedReason ?? "dropped";
-    for (const playerId of removed) {
-      this.broadcaster.removed(room.code, playerId, { reason, message: REMOVED_MESSAGES[reason] });
+    for (const id of gone) this.broadcaster.removed(room.code, id, { reason, message: REMOVED_MESSAGES[reason] });
+    for (const id of newlyKicked) {
+      this.broadcaster.removed(room.code, id, { reason: "kicked", message: REMOVED_MESSAGES.kicked });
     }
-    for (const p of state.players) this.broadcaster.state(room.code, p.id, this.statePayload(room, p.id, now));
+    for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
+
+    // Someone just eliminated can now read the graveyard: give them its history (and drop Mafia chat).
+    for (const p of state.players) {
+      const wasAlive = prev.players.some((q) => q.id === p.id && q.alive);
+      if (wasAlive && !p.alive && !p.kicked) {
+        this.broadcaster.chatHistory(room.code, p.id, {
+          messages: room.chat.filter((m) => canSeeInHistory(state, p.id, m)),
+        });
+      }
+    }
+  }
+
+  private indexOwner(owner: string, code: string): void {
+    const codes = this.roomsByOwner.get(owner) ?? new Set<string>();
+    codes.add(code);
+    this.roomsByOwner.set(owner, codes);
+  }
+
+  /** Saves and sends without an engine change (password, reconnecting status). */
+  private async publish(room: Room): Promise<void> {
+    const outgoing = this.prepareDeliveries(room, this.clock());
+    await this.store.save(room);
+    for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
+  }
+
+  private forgetMember(room: Room, id: string): void {
+    for (const [hash, owner] of Object.entries(room.sessions)) if (owner === id) delete room.sessions[hash];
+    delete room.disconnectedAt[id];
+    delete room.reconnecting[id];
+    delete room.delivery[id];
+  }
+
+  /** Builds updates for every member whose view changed since their last one. */
+  private prepareDeliveries(room: Room, now: number): Array<[string, GameStatePayload]> {
+    const out: Array<[string, GameStatePayload]> = [];
+    const kicked = new Set(room.state.players.filter((p) => p.kicked).map((p) => p.id));
+    for (const id of memberIds(room.state)) {
+      if (kicked.has(id)) continue;
+      const payload = this.prepareDelivery(room, id, now, false);
+      if (payload) out.push([id, payload]);
+    }
+    return out;
+  }
+
+  private prepareDelivery(room: Room, memberId: string, now: number, force: boolean): GameStatePayload | null {
+    const info: RoomInfo = { code: room.code, hasPassword: room.passwordHash !== null };
+    const view = this.viewFor(room, memberId);
+    const hash = digest(JSON.stringify([info, view]));
+    const last = room.delivery[memberId];
+    if (!force && last?.hash === hash) return null;
+    const version = (last?.version ?? 0) + 1;
+    room.delivery[memberId] = { version, hash };
+    return { version, serverNow: now, room: info, view };
+  }
+
+  /** The engine's view plus who is in their reconnect grace period. */
+  private viewFor(room: Room, memberId: string): GameView {
+    const view = getGameView(room.state, memberId);
+    for (const m of [...view.players, ...view.spectators]) {
+      if (m.connected && room.reconnecting[m.id] !== undefined) m.connection = "reconnecting";
+    }
+    return view;
   }
 
   private scheduleTimer(room: Room): void {
@@ -384,17 +641,16 @@ export class RoomService {
     else this.scheduler.set(room.code, phaseEndsAt, () => void this.handleTimer(room.code));
   }
 
-  private statePayload(room: Room, playerId: string, now: number): GameStatePayload {
-    return { version: room.version, serverNow: now, view: getGameView(room.state, playerId) };
-  }
-
   private async close(room: Room, reason: "empty" | "idle", alsoNotify: string[] = []): Promise<void> {
     this.scheduler.clear(room.code);
+    if (room.ownerKey) {
+      const codes = this.roomsByOwner.get(room.ownerKey);
+      codes?.delete(room.code);
+      if (codes?.size === 0) this.roomsByOwner.delete(room.ownerKey);
+    }
     await this.store.delete(room.code);
     const payload: RemovedPayload = { reason: "room_closed", message: REMOVED_MESSAGES.room_closed };
-    for (const playerId of new Set([...room.state.players.map((p) => p.id), ...alsoNotify])) {
-      this.broadcaster.removed(room.code, playerId, payload);
-    }
+    for (const id of new Set([...memberIds(room.state), ...alsoNotify])) this.broadcaster.removed(room.code, id, payload);
     this.logger.info("room.closed", { room: room.code, reason, rooms: await this.store.count() });
   }
 
@@ -407,6 +663,7 @@ export class RoomService {
       this.logger.info("game.started", {
         room: code,
         players: state.players.length,
+        spectators: state.spectators.length,
         mafia: state.mafiaCount,
         extraRoles: extras.join(",") || "none",
         mode: state.settings.contentMode,

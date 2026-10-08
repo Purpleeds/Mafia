@@ -22,7 +22,13 @@ export interface MafiaServerOptions {
   disconnectGraceMs?: number;
   sweepIntervalMs?: number;
   trustProxyHops?: number;
-  service?: Partial<Pick<RoomServiceOptions, "maxRooms" | "emptyRoomTtlMs" | "idleRoomTtlMs" | "lobbyDropMs" | "rng">>;
+  maxSocketsPerIp?: number;
+  service?: Partial<
+    Pick<
+      RoomServiceOptions,
+      "maxRooms" | "maxRoomsPerOwner" | "emptyRoomTtlMs" | "idleRoomTtlMs" | "idleLobbyTtlMs" | "lobbyDropMs" | "rng"
+    >
+  >;
 }
 
 export interface MafiaServerInstance {
@@ -80,8 +86,9 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     limiter,
     presence,
     clock,
-    disconnectGraceMs: options.disconnectGraceMs ?? 5_000,
+    disconnectGraceMs: options.disconnectGraceMs ?? 60_000,
     trustProxyHops,
+    maxSocketsPerIp: options.maxSocketsPerIp ?? 200,
   });
 
   const sweep = setInterval(() => {

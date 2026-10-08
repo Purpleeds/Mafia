@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Role } from "@mafia/shared";
+import type { Avatar, Role } from "@mafia/shared";
 import { makeService } from "./testing/fakes.js";
+
+const AVATAR: Avatar = { color: "teal", icon: "fox" };
 
 type Env = ReturnType<typeof makeService>;
 
@@ -11,9 +13,9 @@ function must<T>(result: { ok: true; value: T } | { ok: false; error: { code: st
 
 /** A room with `n` players; returns their ids in join order (host first). */
 async function roomWith(env: Env, n: number) {
-  const host = must(await env.service.createRoom("Host"));
+  const host = must(await env.service.createRoom("Host", AVATAR));
   const sessions = [host];
-  for (let i = 2; i <= n; i++) sessions.push(must(await env.service.joinRoom(host.roomCode, `Player ${i}`)));
+  for (let i = 2; i <= n; i++) sessions.push(must(await env.service.joinRoom(host.roomCode, `Player ${i}`, AVATAR)));
   return { code: host.roomCode, ids: sessions.map((s) => s.playerId), sessions };
 }
 
@@ -34,8 +36,9 @@ async function startedRoom(env: Env, n = 8, settings: Record<string, unknown> = 
 describe("rooms", () => {
   it("creates a room with a 4-letter code and the creator as host", async () => {
     const env = makeService();
-    const host = must(await env.service.createRoom("  Ana "));
-    expect(host.roomCode).toMatch(/^[A-HJ-NP-Z]{4}$/);
+    const host = must(await env.service.createRoom("  Ana ", AVATAR));
+    expect(host.roomCode).toMatch(/^[A-HJKMNP-Z]{4}$/);
+    expect(host.seat).toBe("player");
     const room = await env.store.get(host.roomCode);
     expect(room?.state.hostId).toBe(host.playerId);
     expect(room?.state.players[0]?.name).toBe("Ana");
@@ -46,22 +49,22 @@ describe("rooms", () => {
 
   it("rejects bad names and unknown rooms", async () => {
     const env = makeService();
-    expect((await env.service.createRoom("   ")).ok).toBe(false);
-    const result = await env.service.joinRoom("ZZZZ", "Bo");
+    expect((await env.service.createRoom("   ", AVATAR)).ok).toBe(false);
+    const result = await env.service.joinRoom("ZZZZ", "Bo", AVATAR);
     expect(!result.ok && result.error.code).toBe("ROOM_NOT_FOUND");
   });
 
   it("retries when a room code is taken", async () => {
     const codes = ["AAAA", "AAAA", "BBBB"];
     const env = makeService({ generateCode: () => codes.shift() ?? "CCCC" });
-    expect(must(await env.service.createRoom("A")).roomCode).toBe("AAAA");
-    expect(must(await env.service.createRoom("B")).roomCode).toBe("BBBB");
+    expect(must(await env.service.createRoom("A", AVATAR)).roomCode).toBe("AAAA");
+    expect(must(await env.service.createRoom("B", AVATAR)).roomCode).toBe("BBBB");
   });
 
   it("refuses new rooms when full", async () => {
     const env = makeService({ maxRooms: 1 });
-    must(await env.service.createRoom("A"));
-    const second = await env.service.createRoom("B");
+    must(await env.service.createRoom("A", AVATAR));
+    const second = await env.service.createRoom("B", AVATAR);
     expect(!second.ok && second.error.code).toBe("SERVER_BUSY");
   });
 
@@ -74,9 +77,9 @@ describe("rooms", () => {
 
   it("serialises simultaneous joins so nobody is lost", async () => {
     const env = makeService();
-    const host = must(await env.service.createRoom("Host"));
+    const host = must(await env.service.createRoom("Host", AVATAR));
     const results = await Promise.all(
-      Array.from({ length: 12 }, (_, i) => env.service.joinRoom(host.roomCode, `P${i}`)),
+      Array.from({ length: 12 }, (_, i) => env.service.joinRoom(host.roomCode, `P${i}`, AVATAR)),
     );
     expect(results.every((r) => r.ok)).toBe(true);
     expect((await env.store.get(host.roomCode))?.state.players).toHaveLength(13);
@@ -90,7 +93,7 @@ describe("rooms", () => {
     expect(must(await env.service.resumeSession(code, guest.sessionToken)).playerId).toBe(guest.playerId);
     const wrong = await env.service.resumeSession(code, "x".repeat(32));
     expect(!wrong.ok && wrong.error.code).toBe("SESSION_INVALID");
-    const other = must(await env.service.createRoom("Other"));
+    const other = must(await env.service.createRoom("Other", AVATAR));
     const crossRoom = await env.service.resumeSession(other.roomCode, guest.sessionToken);
     expect(crossRoom.ok).toBe(false);
   });
@@ -107,7 +110,7 @@ describe("rooms", () => {
 
   it("closes the room when the last player leaves the lobby", async () => {
     const env = makeService();
-    const host = must(await env.service.createRoom("Solo"));
+    const host = must(await env.service.createRoom("Solo", AVATAR));
     must(await env.service.leave(host.roomCode, host.playerId));
     expect(await env.store.get(host.roomCode)).toBeUndefined();
     expect(env.logger.lines.some((l) => l.startsWith("INFO room.closed"))).toBe(true);
@@ -152,16 +155,35 @@ describe("personalised views", () => {
     }
   });
 
-  it("stamps every update with the server clock and an increasing version", async () => {
+  it("stamps every update with the server clock and a per-player version counting only their updates", async () => {
     const env = makeService();
     const room = await startedRoom(env, 5);
-    const versions = env.broadcaster.sent
-      .filter((s) => s.kind === "state" && s.player === room.ids[0])
-      .map((s) => (s.kind === "state" ? s.payload.version : 0));
-    expect(versions).toEqual([...versions].sort((a, b) => a - b));
+    for (const id of room.ids) {
+      const versions = env.broadcaster.sent
+        .filter((s) => s.kind === "state" && s.player === id)
+        .map((s) => (s.kind === "state" ? s.payload.version : 0));
+      expect(versions).toEqual(versions.map((_, i) => i + 1));
+    }
     const last = env.broadcaster.lastState(room.ids[0] ?? "");
     expect(last.serverNow).toBe(env.clock.now);
     expect((last.view.phaseEndsAt ?? 0) - last.serverNow).toBe(10_000); // role reveal
+    expect(last.room).toEqual({ code: room.code, hasPassword: false });
+  });
+
+  it("sends nothing to players whose view didn't change (no night-activity side channel)", async () => {
+    const env = makeService();
+    const room = await startedRoom(env, 8);
+    await env.fireTimer(room.code); // NIGHT
+    const [m1, m2] = room.withRole("mafia") as [string, string];
+    const [doctor] = room.withRole("doctor") as [string];
+    const villagers = room.withRole("villager");
+    const before = env.broadcaster.sent.length;
+    must(await env.service.act(room.code, { type: "NIGHT_ACTION", playerId: m1, targetId: villagers[0] ?? "" }));
+    must(await env.service.act(room.code, { type: "NIGHT_ACTION", playerId: m1, targetId: villagers[1] ?? "" }));
+    must(await env.service.act(room.code, { type: "NIGHT_ACTION", playerId: doctor, targetId: doctor }));
+    const recipients = new Set(env.broadcaster.sent.slice(before).map((s) => s.player));
+    expect([...recipients].sort()).toEqual([m1, m2, doctor].sort());
+    for (const v of villagers) expect(recipients.has(v)).toBe(false);
   });
 });
 

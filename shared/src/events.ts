@@ -9,12 +9,10 @@
  * the session the socket joined with.
  */
 import type { ChatChannel, GameErrorCode, GameView, SettingsPatch } from "./game.js";
+import type { Avatar } from "./identity.js";
 
 // ---------------------------------------------------------------- limits
 
-export const ROOM_CODE_LENGTH = 4;
-/** No I or O, so codes can't be confused with 1 and 0. */
-export const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const MAX_CHAT_LENGTH = 300;
 
 // ---------------------------------------------------------------- errors & acks
@@ -26,6 +24,10 @@ export type TransportErrorCode =
   | "NOT_IN_ROOM"
   | "SESSION_INVALID"
   | "CHAT_NOT_ALLOWED"
+  | "CODE_INVALID"
+  | "CODE_TAKEN"
+  | "PASSWORD_REQUIRED"
+  | "WRONG_PASSWORD"
   | "SERVER_BUSY"
   | "SERVER_ERROR";
 
@@ -45,11 +47,35 @@ export type EmptyPayload = Record<string, never>;
 
 export interface CreateRoomPayload {
   name: string;
+  avatar: Avatar;
+  /** 4–8 letters or numbers; a random 4-letter code is used if omitted. */
+  customCode?: string;
+  /** Makes the room private. */
+  password?: string;
+}
+
+export interface PeekRoomPayload {
+  roomCode: string;
+}
+
+/** What the join screen needs to know before asking for a name. */
+export interface RoomPreview {
+  roomCode: string;
+  hasPassword: boolean;
+  stage: "lobby" | "in_game" | "game_over";
+  playerCount: number;
+  maxPlayers: number;
+  /** In the lobby you join as a player; once a game has started, as a spectator. */
+  joinAs: "player" | "spectator";
+  /** No room for you as a player or spectator right now. */
+  isFull: boolean;
 }
 
 export interface JoinRoomPayload {
   roomCode: string;
   name: string;
+  avatar: Avatar;
+  password?: string;
 }
 
 export interface ResumeSessionPayload {
@@ -57,11 +83,30 @@ export interface ResumeSessionPayload {
   sessionToken: string;
 }
 
-/** Returned when you create, join or resume. Keep `sessionToken` secret (e.g. localStorage) to rejoin after a refresh. */
+/**
+ * Returned when you create, join or resume. Save it (e.g. localStorage) and send
+ * room:resume with it after a refresh or reconnect to come back as the same player.
+ */
 export interface SessionInfo {
   roomCode: string;
   playerId: string;
   sessionToken: string;
+  seat: "player" | "spectator";
+}
+
+/** Lobby only. */
+export interface UpdateProfilePayload {
+  name?: string;
+  avatar?: Avatar;
+}
+
+export interface TargetPlayerPayload {
+  playerId: string;
+}
+
+export interface SetPasswordPayload {
+  /** null removes the password. */
+  password: string | null;
 }
 
 export interface NightActionPayload {
@@ -100,11 +145,18 @@ export interface ServerHelloPayload {
  * Your personalised view of the game. `serverNow` is the server clock when this
  * was sent, so a countdown is `view.phaseEndsAt - serverNow` minus the time
  * elapsed locally since it arrived; the client clock is never trusted.
- * `version` only increases: ignore a payload older than the one you have.
+ * You only get an update when something you can see has changed.
  */
+export interface RoomInfo {
+  code: string;
+  hasPassword: boolean;
+}
+
 export interface GameStatePayload {
+  /** Counts only the updates sent to you; ignore a payload older than the one you have. */
   version: number;
   serverNow: number;
+  room: RoomInfo;
   view: GameView;
 }
 
@@ -121,7 +173,7 @@ export interface ChatHistoryPayload {
   messages: ChatMessage[];
 }
 
-export type RemovedReason = "left" | "dropped" | "room_closed";
+export type RemovedReason = "left" | "kicked" | "dropped" | "room_closed";
 
 export interface RemovedPayload {
   reason: RemovedReason;
@@ -135,16 +187,24 @@ export interface SessionReplacedPayload {
 // ---------------------------------------------------------------- event maps
 
 export interface ClientToServerEvents {
+  // joining
   "room:create": (payload: CreateRoomPayload, ack: Ack<SessionInfo>) => void;
+  "room:peek": (payload: PeekRoomPayload, ack: Ack<RoomPreview>) => void;
   "room:join": (payload: JoinRoomPayload, ack: Ack<SessionInfo>) => void;
   "room:resume": (payload: ResumeSessionPayload, ack: Ack<SessionInfo>) => void;
   "room:leave": (payload: EmptyPayload, ack: Ack) => void;
-  "lobby:updateSettings": (payload: SettingsPatch, ack: Ack) => void;
-  "game:start": (payload: EmptyPayload, ack: Ack) => void;
+  "player:updateProfile": (payload: UpdateProfilePayload, ack: Ack) => void;
+  // host controls
+  "host:updateSettings": (payload: SettingsPatch, ack: Ack) => void;
+  "host:start": (payload: EmptyPayload, ack: Ack) => void;
+  "host:restart": (payload: EmptyPayload, ack: Ack) => void;
+  "host:kick": (payload: TargetPlayerPayload, ack: Ack) => void;
+  "host:transfer": (payload: TargetPlayerPayload, ack: Ack) => void;
+  "host:setPassword": (payload: SetPasswordPayload, ack: Ack) => void;
+  // playing
   "game:ackRole": (payload: EmptyPayload, ack: Ack) => void;
   "game:nightAction": (payload: NightActionPayload, ack: Ack) => void;
   "game:vote": (payload: VotePayload, ack: Ack) => void;
-  "game:restart": (payload: EmptyPayload, ack: Ack) => void;
   "chat:send": (payload: ChatSendPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
 }
@@ -167,15 +227,20 @@ export type ClientEventName = keyof ClientToServerEvents;
 /** Every client event name, for runtime checks (unknown events are dropped). */
 export const CLIENT_EVENTS = [
   "room:create",
+  "room:peek",
   "room:join",
   "room:resume",
   "room:leave",
-  "lobby:updateSettings",
-  "game:start",
+  "player:updateProfile",
+  "host:updateSettings",
+  "host:start",
+  "host:restart",
+  "host:kick",
+  "host:transfer",
+  "host:setPassword",
   "game:ackRole",
   "game:nightAction",
   "game:vote",
-  "game:restart",
   "chat:send",
   "time:sync",
 ] as const satisfies readonly ClientEventName[];

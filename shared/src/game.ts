@@ -2,6 +2,7 @@
  * Game vocabulary shared by the server and the client: roles, phases, settings
  * and the per-player "view" the server is allowed to send.
  */
+import type { Avatar } from "./identity.js";
 
 // ---------------------------------------------------------------- roles
 
@@ -55,7 +56,8 @@ export const SKIP = "skip";
 
 export const MIN_PLAYERS = 5;
 export const MAX_PLAYERS = 20;
-export const MAX_PLAYER_NAME_LENGTH = 20;
+/** Late joiners watch until the next game. */
+export const MAX_SPECTATORS = 20;
 
 /** Roughly one Mafia per four players, at least one. */
 export function defaultMafiaCount(playerCount: number): number {
@@ -137,6 +139,7 @@ export type GameErrorCode =
   | "ALREADY_JOINED"
   | "ROOM_FULL"
   | "INVALID_NAME"
+  | "INVALID_AVATAR"
   | "NAME_TAKEN"
   | "INVALID_SETTINGS"
   | "NOT_ENOUGH_PLAYERS"
@@ -144,7 +147,8 @@ export type GameErrorCode =
   | "DEAD_PLAYER"
   | "NO_ABILITY"
   | "INVALID_TARGET"
-  | "REPEAT_PROTECTION";
+  | "REPEAT_PROTECTION"
+  | "SPECTATOR";
 
 export interface GameError {
   code: GameErrorCode;
@@ -208,9 +212,12 @@ export interface InvestigationView {
 export interface YouView {
   id: string;
   name: string;
+  avatar: Avatar;
   role: Role | null;
   alive: boolean;
   isHost: boolean;
+  /** Joined while a game was running: watching until the next one. */
+  isSpectator: boolean;
   /** Other Mafia members (Mafia only). */
   teammateIds: string[];
   /** The linked pair (visible to Cupid, the lovers, and everyone at game over). */
@@ -220,16 +227,35 @@ export interface YouView {
   nightAction: NightActionView | null;
 }
 
+/**
+ * online: connected. reconnecting: their connection dropped moments ago (e.g. a
+ * locked phone) and they still count as present. offline: gone for longer.
+ */
+export type ConnectionStatus = "online" | "reconnecting" | "offline";
+
 export interface PublicPlayerView {
   id: string;
   name: string;
+  avatar: Avatar;
   alive: boolean;
+  /** The game counts this player as present (online or reconnecting). */
   connected: boolean;
+  connection: ConnectionStatus;
   isHost: boolean;
+  /** Removed by the host during the game (shown as eliminated). */
+  kicked: boolean;
   /** null unless public (reveal-on-death, or game over). */
   role: Role | null;
   /** Role-reveal: acknowledged. Voting: has voted. Never used at night. */
   done: boolean;
+}
+
+export interface SpectatorView {
+  id: string;
+  name: string;
+  avatar: Avatar;
+  connected: boolean;
+  connection: ConnectionStatus;
 }
 
 export interface GameView {
@@ -242,6 +268,7 @@ export interface GameView {
   /** Total Mafia in this game (0 in the lobby). */
   mafiaCount: number;
   players: PublicPlayerView[];
+  spectators: SpectatorView[];
   you: YouView | null;
   nightReport: NightReportView | null;
   voteReport: VoteReportView | null;

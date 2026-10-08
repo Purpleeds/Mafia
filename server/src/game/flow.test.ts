@@ -1,7 +1,6 @@
 import { MAX_PLAYERS } from "@mafia/shared";
 import { describe, expect, it } from "vitest";
-import { R7, gameWithRoles, lobby, runNight } from "./testing/harness.js";
-import { Game } from "./testing/harness.js";
+import { AVATAR, Game, R7, gameWithRoles, lobby, runNight } from "./testing/harness.js";
 
 describe("lobby", () => {
   it("makes the first player the host", () => {
@@ -11,27 +10,49 @@ describe("lobby", () => {
 
   it("cleans names and rejects bad or duplicate ones", () => {
     const g = new Game();
-    g.ok({ type: "JOIN", playerId: "a", name: "  Ana   Maria \u0007" });
+    g.ok({ type: "JOIN", playerId: "a", name: "  Ana   Maria ", avatar: AVATAR });
     expect(g.player("a").name).toBe("Ana Maria");
-    expect(g.fail({ type: "JOIN", playerId: "b", name: "ana maria" })).toBe("NAME_TAKEN");
-    expect(g.fail({ type: "JOIN", playerId: "b", name: "   " })).toBe("INVALID_NAME");
-    expect(g.fail({ type: "JOIN", playerId: "b", name: "x".repeat(21) })).toBe("INVALID_NAME");
-    expect(g.fail({ type: "JOIN", playerId: "a", name: "Other" })).toBe("ALREADY_JOINED");
+    expect(g.fail({ type: "JOIN", playerId: "b", name: "ana maria", avatar: AVATAR })).toBe("NAME_TAKEN");
+    expect(g.fail({ type: "JOIN", playerId: "b", name: "   ", avatar: AVATAR })).toBe("INVALID_NAME");
+    expect(g.fail({ type: "JOIN", playerId: "b", name: "x".repeat(17), avatar: AVATAR })).toBe("INVALID_NAME");
+    expect(g.fail({ type: "JOIN", playerId: "b", name: "bell\u0007", avatar: AVATAR })).toBe("INVALID_NAME");
+    expect(g.fail({ type: "JOIN", playerId: "a", name: "Other", avatar: AVATAR })).toBe("ALREADY_JOINED");
+  });
+
+  it("accepts 16-character names in any alphabet, with basic punctuation", () => {
+    const g = new Game();
+    for (const [id, name] of [["a", "x".repeat(16)], ["b", "Zoë O'Neil-Smith"], ["c", "李雷"], ["d", "Mr. T (again)!"]]) {
+      g.ok({ type: "JOIN", playerId: id ?? "", name: name ?? "", avatar: AVATAR });
+    }
+    for (const name of ["🙂 Smiley", "<b>bold</b>", "a/b", "shit happens"]) {
+      expect(g.fail({ type: "JOIN", playerId: "e", name, avatar: AVATAR })).toBe("INVALID_NAME");
+    }
+  });
+
+  it("needs a real avatar", () => {
+    const g = new Game();
+    const bad = [{ color: "plaid", icon: "fox" }, { color: "teal", icon: "dinosaur" }, null];
+    for (const avatar of bad) {
+      expect(
+        g.fail({ type: "JOIN", playerId: "a", name: "Ana", avatar: avatar as unknown as typeof AVATAR }),
+      ).toBe("INVALID_AVATAR");
+    }
   });
 
   it("rejects ids that could clash with ballots or object keys", () => {
     const g = new Game();
     for (const id of ["skip", "__proto__", "", "has space", "-lead"]) {
-      expect(g.fail({ type: "JOIN", playerId: id, name: "Name" })).toBe("INVALID_ID");
+      expect(g.fail({ type: "JOIN", playerId: id, name: "Name", avatar: AVATAR })).toBe("INVALID_ID");
     }
   });
 
-  it("holds at most 20 players and nobody joins mid-game", () => {
+  it("holds at most 20 players; anyone joining mid-game watches as a spectator", () => {
     const g = lobby(MAX_PLAYERS);
-    expect(g.fail({ type: "JOIN", playerId: "late", name: "Late" })).toBe("ROOM_FULL");
+    expect(g.fail({ type: "JOIN", playerId: "late", name: "Late", avatar: AVATAR })).toBe("ROOM_FULL");
     g.ok({ type: "START_GAME", playerId: "p1" });
-    g.ok({ type: "LEAVE", playerId: "p20" });
-    expect(g.fail({ type: "JOIN", playerId: "late", name: "Late" })).toBe("WRONG_PHASE");
+    g.ok({ type: "JOIN", playerId: "late", name: "Late", avatar: AVATAR });
+    expect(g.state.players).toHaveLength(MAX_PLAYERS);
+    expect(g.state.spectators.map((s) => s.id)).toEqual(["late"]);
   });
 
   it("lets only the host change valid settings, in the lobby", () => {

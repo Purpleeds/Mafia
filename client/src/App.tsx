@@ -1,38 +1,44 @@
-import { useEffect, useState } from "react";
-import { io, type Socket } from "socket.io-client";
-import type { ClientToServerEvents, ServerToClientEvents } from "@mafia/shared";
-
-type Status = "connecting" | "connected" | "disconnected";
+import { useEffect } from "react";
+import type { ContentMode } from "@mafia/shared";
+import { Background } from "./components/Background";
+import { ConnectionBanner } from "./components/ConnectionBanner";
+import { ReplacedOverlay } from "./components/ReplacedOverlay";
+import { Toasts } from "./components/Toasts";
+import { canonicalizeLocation, parseRoute, usePathname } from "./lib/router";
+import { HomeScreen } from "./screens/HomeScreen";
+import { RoomRoute } from "./screens/RoomRoute";
+import { openRoom } from "./state/controller";
+import { useAppState } from "./state/store";
 
 export function App() {
-  const [status, setStatus] = useState<Status>("connecting");
-  const [offsetMs, setOffsetMs] = useState<number | null>(null);
+  const pathname = usePathname();
+  const route = parseRoute(pathname);
+  const roomCode = route.name === "room" ? route.code : null;
 
   useEffect(() => {
-    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io();
-    socket.on("connect", () => {
-      setStatus("connected");
-      // Estimate the server clock offset (countdowns never trust the local clock).
-      socket.emit("time:sync", { clientSentAt: Date.now() }, (result) => {
-        if (!result.ok) return;
-        const now = Date.now();
-        const latency = (now - result.data.clientSentAt) / 2;
-        setOffsetMs(Math.round(result.data.serverNow + latency - now));
-      });
-    });
-    socket.on("disconnect", () => setStatus("disconnected"));
-    return () => {
-      socket.close();
-    };
-  }, []);
+    canonicalizeLocation();
+  }, [pathname]);
+
+  useEffect(() => {
+    if (roomCode) openRoom(roomCode);
+  }, [roomCode]);
+
+  const mode = useAppState((s): ContentMode => {
+    const game = s.game;
+    return roomCode && game && game.payload.room.code === roomCode ? game.payload.view.settings.contentMode : "safe";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.mode = mode;
+  }, [mode]);
 
   return (
-    <main className="hello">
-      <h1>Hello, Mafia!</h1>
-      <p className={`status status-${status}`}>
-        {status === "connected" ? "Connected to the server" : status === "connecting" ? "Connecting…" : "Disconnected"}
-      </p>
-      {offsetMs !== null && <p className="message">Server clock offset: {offsetMs} ms</p>}
-    </main>
+    <>
+      <Background mode={mode} />
+      <ConnectionBanner />
+      <main className="app-main">{roomCode ? <RoomRoute key={roomCode} code={roomCode} /> : <HomeScreen />}</main>
+      <Toasts />
+      <ReplacedOverlay />
+    </>
   );
 }

@@ -1,5 +1,5 @@
 import type { ChatChannel } from "@mafia/shared";
-import { findPlayer } from "./state.js";
+import { findPlayer, findSpectator } from "./state.js";
 import type { GameState } from "./types.js";
 
 /**
@@ -9,13 +9,20 @@ import type { GameState } from "./types.js";
  *  - public:    everyone in the lobby and after the game; living players during
  *               the day and the result screens; dead players may read, not write.
  *  - mafia:     living Mafia, at night only.
- *  - graveyard: eliminated players only, in any phase of a running game.
+ *  - graveyard: eliminated players and spectators, in any phase of a running game.
+ *
+ * Spectators (late joiners) are treated like eliminated players: they watch the
+ * public channel and talk in the graveyard, never to the living.
  */
 export function canWrite(state: GameState, playerId: string, channel: ChatChannel): boolean {
-  const player = findPlayer(state, playerId);
-  if (!player) return false;
   const { phase } = state;
   const lobbyOrOver = phase === "LOBBY" || phase === "GAME_OVER";
+  if (findSpectator(state, playerId)) {
+    if (channel === "public") return lobbyOrOver;
+    return channel === "graveyard" && !lobbyOrOver;
+  }
+  const player = findPlayer(state, playerId);
+  if (!player || player.kicked) return false;
 
   switch (channel) {
     case "public":
@@ -30,8 +37,10 @@ export function canWrite(state: GameState, playerId: string, channel: ChatChanne
 }
 
 export function canRead(state: GameState, playerId: string, channel: ChatChannel): boolean {
+  const inGame = state.phase !== "LOBBY" && state.phase !== "GAME_OVER";
+  if (findSpectator(state, playerId)) return channel === "public" || (channel === "graveyard" && inGame);
   const player = findPlayer(state, playerId);
-  if (!player) return false;
+  if (!player || player.kicked) return false;
   switch (channel) {
     case "public":
       return true; // spectators watch

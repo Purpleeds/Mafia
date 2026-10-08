@@ -9,6 +9,7 @@ export type RateCategory =
   | "connection"
   | "createRoom"
   | "joinRoom"
+  | "resume"
   | "chat"
   | "gameAction"
   | "hostAction"
@@ -17,18 +18,25 @@ export type RateCategory =
 
 export type RateLimitConfig = Record<RateCategory, BucketConfig>;
 
+/**
+ * Per-IP limits are sized for a whole party on one Wi-Fi network (or one
+ * mobile carrier's shared address): 20 players each peeking, joining and
+ * reconnecting must fit comfortably.
+ */
 export const DEFAULT_RATE_LIMITS: RateLimitConfig = {
   /** New socket connections, per IP. */
-  connection: { capacity: 20, refillPerSecond: 20 / 60 },
+  connection: { capacity: 60, refillPerSecond: 1 },
   /** Rooms created, per IP. */
   createRoom: { capacity: 5, refillPerSecond: 1 / 60 },
-  /** Join/resume attempts, per IP (also stops guessing room codes). */
-  joinRoom: { capacity: 10, refillPerSecond: 1 / 3 },
-  /** Chat messages, per connection: bursts of 5, then one a second. */
+  /** room:peek and room:join, per IP (also slows down guessing room codes and passwords). */
+  joinRoom: { capacity: 60, refillPerSecond: 1 },
+  /** room:resume, per IP. Tokens can't be guessed, so this only stops floods. */
+  resume: { capacity: 120, refillPerSecond: 2 },
+  /** Chat messages, per player: bursts of 5, then one a second. */
   chat: { capacity: 5, refillPerSecond: 1 },
-  /** Votes, night actions, role acknowledgements, per connection. */
+  /** Votes, night actions, role acknowledgements, per player. */
   gameAction: { capacity: 10, refillPerSecond: 2 },
-  /** Settings, start, restart, leave, per connection. */
+  /** Settings, start, restart, kick, leave, profile changes, per player. */
   hostAction: { capacity: 10, refillPerSecond: 1 },
   timeSync: { capacity: 10, refillPerSecond: 0.5 },
   /** Every incoming event, per connection: a cap on raw flooding. */

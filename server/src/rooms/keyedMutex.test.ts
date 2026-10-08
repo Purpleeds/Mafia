@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { KeyedMutex } from "./keyedMutex.js";
-import { generateRoomCode, hashToken, newPlayerId, newSessionToken, normalizeRoomCode } from "./ids.js";
+import { normalizeRoomCode } from "@mafia/shared";
+import { generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -46,13 +47,15 @@ describe("KeyedMutex", () => {
 });
 
 describe("ids", () => {
-  it("makes 4-letter room codes without I or O", () => {
-    for (let i = 0; i < 200; i++) expect(generateRoomCode()).toMatch(/^[A-HJ-NP-Z]{4}$/);
+  it("makes 4-letter uppercase room codes without O, I or L (and no digits)", () => {
+    for (let i = 0; i < 500; i++) expect(generateRoomCode()).toMatch(/^[A-HJKMNP-Z]{4}$/);
   });
 
-  it("normalises room codes", () => {
-    expect(normalizeRoomCode(" wxyz")).toBe("WXYZ");
-    expect(normalizeRoomCode("WXY0")).toBeNull();
+  it("normalises typed room codes", () => {
+    expect(normalizeRoomCode(" wx-yz")).toBe("WXYZ");
+    expect(normalizeRoomCode("party2")).toBe("PARTY2");
+    expect(normalizeRoomCode("ABC")).toBeNull();
+    expect(normalizeRoomCode("ABCDEFGHI")).toBeNull();
   });
 
   it("makes player ids the engine accepts and unguessable tokens", () => {

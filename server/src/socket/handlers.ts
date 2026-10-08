@@ -3,9 +3,12 @@ import {
   type AckResult,
   type ClientEventName,
   type ErrorCode,
+  type GameErrorCode,
   type SessionInfo,
 } from "@mafia/shared";
 import type { Logger } from "../logger.js";
+import { digest } from "../rooms/ids.js";
+import { KeyedMutex } from "../rooms/keyedMutex.js";
 import type { PlayerAction, RoomService, ServiceResult } from "../rooms/roomService.js";
 import type { Presence } from "./presence.js";
 import type { RateCategory, RateLimiter } from "./rateLimiter.js";
@@ -16,9 +19,13 @@ import {
   parseEmpty,
   parseJoinRoom,
   parseNightAction,
+  parsePeekRoom,
   parseResume,
+  parseSetPassword,
   parseSettingsPatch,
+  parseTargetPlayer,
   parseTimeSync,
+  parseUpdateProfile,
   parseVote,
   type Parsed,
 } from "./validate.js";
@@ -29,10 +36,12 @@ export interface SocketHandlerOptions {
   limiter: RateLimiter;
   presence: Presence;
   clock: () => number;
-  /** How long a dropped connection may come back before the player is marked disconnected. */
+  /** How long a dropped connection may come back before the player is marked gone (60 s by default). */
   disconnectGraceMs: number;
   /** Proxies in front of the server that append to X-Forwarded-For (1 on Render, 0 locally). */
   trustProxyHops: number;
+  /** Open sockets allowed per IP at once (a party on one Wi-Fi shares an IP). */
+  maxSocketsPerIp: number;
 }
 
 type Reply<T> = (result: AckResult<T>) => void;
@@ -43,6 +52,17 @@ interface Session {
 }
 
 const CLIENT_EVENT_SET = new Set<string>(CLIENT_EVENTS);
+
+/** Problems with the request itself; worth logging with who sent it. Game-rule rejections are logged by the service. */
+const TRANSPORT_CODES = new Set<ErrorCode>([
+  "BAD_REQUEST",
+  "RATE_LIMITED",
+  "NOT_IN_ROOM",
+  "SESSION_INVALID",
+  "SERVER_BUSY",
+  "SERVER_ERROR",
+]);
+const isGameCode = (code: ErrorCode): code is GameErrorCode => !TRANSPORT_CODES.has(code);
 
 const failure = (code: ErrorCode, message: string): AckResult<never> => ({ ok: false, error: { code, message } });
 const notInRoom = <T>(): ServiceResult<T> => ({
@@ -67,7 +87,21 @@ export function clientIp(socket: MafiaSocket, trustProxyHops: number): string {
 
 export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOptions): void {
   const { service, logger, limiter, presence, clock } = options;
+  /** Session changes (create/join/resume/leave) on one socket run one at a time. */
+  const sessionQueue = new KeyedMutex();
+  const socketsPerIp = new Map<string, number>();
+  const lastLogged = new Map<string, number>();
   let loggedProxyShape = false;
+
+  /** True at most once per key per window, so a flood can't flood the logs too. */
+  const shouldLog = (key: string, windowMs: number): boolean => {
+    const now = clock();
+    const last = lastLogged.get(key);
+    if (last !== undefined && now - last < windowMs) return false;
+    if (lastLogged.size > 10_000) lastLogged.clear();
+    lastLogged.set(key, now);
+    return true;
+  };
 
   io.use((socket, next) => {
     const ip = clientIp(socket, options.trustProxyHops);
@@ -79,21 +113,29 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       logger.info("connection.proxy_shape", { xffEntries: entries, trustProxyHops: options.trustProxyHops });
       loggedProxyShape = true;
     }
-    if (!limiter.consume(`ip:${ip}`, "connection")) {
-      logger.warn("connection.rate_limited", { ip });
+    const refused =
+      (socketsPerIp.get(ip) ?? 0) >= options.maxSocketsPerIp
+        ? "too_many_sockets"
+        : !limiter.consume(`ip:${ip}`, "connection")
+          ? "rate"
+          : null;
+    if (refused) {
+      if (shouldLog(`refused:${ip}`, 60_000)) logger.warn("connection.refused", { ip, reason: refused });
       next(new Error("RATE_LIMITED"));
+      // Close the transport too, or one WebSocket could keep sending CONNECT packets.
+      setTimeout(() => socket.conn.close(), 0);
       return;
     }
     next();
   });
 
   io.on("connection", (socket) => {
-    const lastWarned = new Map<string, number>();
-    /** At most one warning per socket and kind every 10 s, so floods don't flood the logs too. */
-    const warnThrottled = (kind: string, fields: Record<string, string | undefined>) => {
-      const now = clock();
-      if (now - (lastWarned.get(kind) ?? -Infinity) < 10_000) return;
-      lastWarned.set(kind, now);
+    const ip = socket.data.ip;
+    socketsPerIp.set(ip, (socketsPerIp.get(ip) ?? 0) + 1);
+
+    /** At most one warning per socket and key every 10 s. */
+    const warnThrottled = (kind: string, fields: Record<string, string | undefined>, key = kind) => {
+      if (!shouldLog(`${socket.id}:${key}`, 10_000)) return;
       logger.warn(kind, { socket: socket.id, ip: socket.data.ip, ...fields });
     };
 
@@ -146,7 +188,10 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
         const where = () => ({ event, room: socket.data.roomCode, player: socket.data.playerId });
 
         void (async () => {
-          const owner = config.perIp ? `ip:${socket.data.ip}` : socket.id;
+          // Per player once seated, so a fresh socket (resume) doesn't get a fresh burst.
+          const { roomCode, playerId } = socket.data;
+          const seat = roomCode && playerId ? `seat:${roomCode}:${playerId}` : socket.id;
+          const owner = config.perIp ? `ip:${socket.data.ip}` : seat;
           if (!limiter.consume(owner, config.category)) {
             warnThrottled("event.rate_limited", { event, category: config.category });
             reply(failure("RATE_LIMITED", "You're doing that too often. Wait a moment."));
@@ -167,7 +212,8 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
             return;
           }
           if (!result.ok) {
-            logger.warn("event.rejected", { ...where(), code: result.error.code });
+            const code = result.error.code;
+            if (!isGameCode(code)) warnThrottled("event.rejected", { ...where(), code }, `rejected:${code}`);
             reply({ ok: false, error: result.error });
             return;
           }
@@ -191,20 +237,20 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
     const act = (build: (s: Session) => PlayerAction) =>
       withSession((s) => service.act(s.roomCode, build(s)));
 
-    /** Leaves whatever room this socket speaks for, unless it is `keep`. */
-    const unbindCurrent = async (keep?: Session): Promise<void> => {
+    const serially = <T>(task: () => Promise<T>): Promise<T> => sessionQueue.run(socket.id, task);
+
+    /** Stops this socket speaking for its current seat. With `leaveRoom`, the seat is given up too. */
+    const unbind = async (leaveRoom: boolean): Promise<void> => {
       const { roomCode, playerId } = socket.data;
       if (!roomCode || !playerId) return;
-      if (keep && keep.roomCode === roomCode && keep.playerId === playerId) return;
       const wasActive = presence.release(roomCode, playerId, socket.id);
       await socket.leave(playerRoom(roomCode, playerId));
       socket.data.roomCode = undefined;
       socket.data.playerId = undefined;
-      // Switching to another room counts as leaving this one.
-      if (wasActive) await service.leave(roomCode, playerId);
+      if (wasActive && leaveRoom) await service.leave(roomCode, playerId);
     };
 
-    /** Makes this socket the player's connection, closing any older one (e.g. another tab). */
+    /** Makes this socket the member's connection, closing any older one (e.g. another tab). */
     const bind = async (info: SessionInfo): Promise<void> => {
       const { roomCode, playerId } = info;
       const replaced = presence.claim(roomCode, playerId, socket.id);
@@ -214,7 +260,7 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
           old.data.roomCode = undefined;
           old.data.playerId = undefined;
           await old.leave(playerRoom(roomCode, playerId));
-          old.emit("session:replaced", { message: "This game was opened somewhere else." });
+          old.emit("session:replaced", { message: "This game was opened on another tab or device." });
           old.disconnect(true);
         }
         logger.info("session.replaced", { room: roomCode, player: playerId });
@@ -224,60 +270,101 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       await socket.join(playerRoom(roomCode, playerId));
     };
 
-    /** After the ack: mark the player connected and send their view and chat history. */
+    /** Switches this socket to a new seat. The old seat (if any, and different) is left only now that the new one exists. */
+    const switchTo = async (info: SessionInfo): Promise<void> => {
+      const { roomCode, playerId } = socket.data;
+      const same = roomCode === info.roomCode && playerId === info.playerId;
+      if (!same) {
+        await unbind(true);
+        await bind(info);
+      } else if (!presence.isActive(info.roomCode, info.playerId, socket.id)) {
+        await bind(info);
+      }
+    };
+
+    /** After the ack: mark the member present and send their view and chat history. */
     const sync = (info: SessionInfo) => async () => {
       await service.setConnected(info.roomCode, info.playerId, true);
       await service.sendSnapshot(info.roomCode, info.playerId);
     };
 
-    // ---------------------------------------------------------------- rooms
+    // ---------------------------------------------------------------- joining
 
-    on("room:create", { category: "createRoom", perIp: true, parse: parseCreateRoom }, async ({ name }) => {
-      await unbindCurrent();
-      const result = await service.createRoom(name);
-      if (!result.ok) return result;
-      await bind(result.value);
-      return { ...result, afterAck: sync(result.value) };
-    });
-
-    on("room:join", { category: "joinRoom", perIp: true, parse: parseJoinRoom }, async ({ roomCode, name }) => {
-      await unbindCurrent();
-      const result = await service.joinRoom(roomCode, name);
-      if (!result.ok) return result;
-      await bind(result.value);
-      return { ...result, afterAck: sync(result.value) };
-    });
-
-    on("room:resume", { category: "joinRoom", perIp: true, parse: parseResume }, async ({ roomCode, sessionToken }) => {
-      const result = await service.resumeSession(roomCode, sessionToken);
-      if (!result.ok) return result;
-      await unbindCurrent(result.value);
-      await bind(result.value);
-      logger.info("session.resumed", { room: roomCode, player: result.value.playerId });
-      return { ...result, afterAck: sync(result.value) };
-    });
-
-    on("room:leave", { category: "hostAction", parse: parseEmpty }, () =>
-      withSession(async (s) => {
-        const result = await service.leave(s.roomCode, s.playerId);
-        if (result.ok) await unbindCurrent();
-        return result;
+    on("room:create", { category: "createRoom", perIp: true, parse: parseCreateRoom }, (p) =>
+      serially(async () => {
+        const result = await service.createRoom(p.name, p.avatar, {
+          customCode: p.customCode,
+          password: p.password,
+          ownerKey: digest(`owner:${socket.data.ip}`),
+        });
+        if (!result.ok) return result;
+        await switchTo(result.value);
+        return { ...result, afterAck: sync(result.value) };
       }),
     );
 
-    // ---------------------------------------------------------------- lobby & game
+    on("room:peek", { category: "joinRoom", perIp: true, parse: parsePeekRoom }, (p) => service.peek(p.roomCode));
 
-    on("lobby:updateSettings", { category: "hostAction", parse: parseSettingsPatch }, (settings) =>
+    on("room:join", { category: "joinRoom", perIp: true, parse: parseJoinRoom }, (p) =>
+      serially(async () => {
+        const result = await service.joinRoom(p.roomCode, p.name, p.avatar, p.password);
+        if (!result.ok) return result;
+        await switchTo(result.value);
+        return { ...result, afterAck: sync(result.value) };
+      }),
+    );
+
+    on("room:resume", { category: "resume", perIp: true, parse: parseResume }, (p) =>
+      serially(async () => {
+        const result = await service.resumeSession(p.roomCode, p.sessionToken);
+        if (!result.ok) return result;
+        await switchTo(result.value);
+        logger.info("session.resumed", { room: p.roomCode, player: result.value.playerId });
+        return { ...result, afterAck: sync(result.value) };
+      }),
+    );
+
+    on("room:leave", { category: "hostAction", parse: parseEmpty }, () =>
+      serially(() =>
+        withSession(async (s) => {
+          const result = await service.leave(s.roomCode, s.playerId);
+          if (result.ok) await unbind(false);
+          return result;
+        }),
+      ),
+    );
+
+    on("player:updateProfile", { category: "hostAction", parse: parseUpdateProfile }, (p) =>
+      act((s) => ({ type: "UPDATE_PROFILE", playerId: s.playerId, name: p.name, avatar: p.avatar })),
+    );
+
+    // ---------------------------------------------------------------- host controls
+
+    on("host:updateSettings", { category: "hostAction", parse: parseSettingsPatch }, (settings) =>
       act((s) => ({ type: "UPDATE_SETTINGS", playerId: s.playerId, settings })),
     );
 
-    on("game:start", { category: "hostAction", parse: parseEmpty }, () =>
+    on("host:start", { category: "hostAction", parse: parseEmpty }, () =>
       act((s) => ({ type: "START_GAME", playerId: s.playerId })),
     );
 
-    on("game:restart", { category: "hostAction", parse: parseEmpty }, () =>
+    on("host:restart", { category: "hostAction", parse: parseEmpty }, () =>
       act((s) => ({ type: "RESTART", playerId: s.playerId })),
     );
+
+    on("host:kick", { category: "hostAction", parse: parseTargetPlayer }, (p) =>
+      act((s) => ({ type: "KICK", playerId: s.playerId, targetId: p.playerId })),
+    );
+
+    on("host:transfer", { category: "hostAction", parse: parseTargetPlayer }, (p) =>
+      act((s) => ({ type: "TRANSFER_HOST", playerId: s.playerId, targetId: p.playerId })),
+    );
+
+    on("host:setPassword", { category: "hostAction", parse: parseSetPassword }, (p) =>
+      withSession((s) => service.setPassword(s.roomCode, s.playerId, p.password)),
+    );
+
+    // ---------------------------------------------------------------- playing
 
     on("game:ackRole", { category: "gameAction", parse: parseEmpty }, () =>
       act((s) => ({ type: "ACK_ROLE", playerId: s.playerId })),
@@ -309,18 +396,23 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
 
     socket.on("disconnect", () => {
       limiter.forget(socket.id);
+      const open = (socketsPerIp.get(ip) ?? 1) - 1;
+      if (open > 0) socketsPerIp.set(ip, open);
+      else socketsPerIp.delete(ip);
       const { roomCode, playerId } = socket.data;
       if (!roomCode || !playerId) return;
       if (!presence.release(roomCode, playerId, socket.id)) return;
+      const report = (step: string) => (r: ServiceResult<null>) => {
+        if (!r.ok && r.error.code !== "ROOM_NOT_FOUND" && r.error.code !== "NOT_IN_ROOM") {
+          logger.warn(`player.${step}_failed`, { room: roomCode, player: playerId, code: r.error.code });
+        }
+      };
+      const crash = (step: string) => (err: unknown) =>
+        logger.error(`player.${step}_failed`, { room: roomCode, player: playerId }, err);
+      // Shown as "reconnecting" at once; only marked gone if they don't come back in time.
+      service.markReconnecting(roomCode, playerId).then(report("reconnecting"), crash("reconnecting"));
       presence.startGrace(roomCode, playerId, options.disconnectGraceMs, () => {
-        service
-          .setConnected(roomCode, playerId, false)
-          .then((r) => {
-            if (!r.ok && r.error.code !== "ROOM_NOT_FOUND" && r.error.code !== "NOT_IN_ROOM") {
-              logger.warn("player.disconnect_failed", { room: roomCode, player: playerId, code: r.error.code });
-            }
-          })
-          .catch((err: unknown) => logger.error("player.disconnect_failed", { room: roomCode, player: playerId }, err));
+        service.setConnected(roomCode, playerId, false).then(report("disconnect"), crash("disconnect"));
       });
     });
   });

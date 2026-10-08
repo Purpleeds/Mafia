@@ -1,15 +1,22 @@
 import {
+  ROOM_PASSWORD_MAX_LENGTH,
   SKIP,
+  isAvatar,
+  normalizeRoomCode,
+  type Avatar,
   type ChatChannel,
   type ChatSendPayload,
   type CreateRoomPayload,
   type JoinRoomPayload,
   type NightActionPayload,
+  type PeekRoomPayload,
   type ResumeSessionPayload,
+  type SetPasswordPayload,
+  type TargetPlayerPayload,
   type TimeSyncPayload,
+  type UpdateProfilePayload,
   type VotePayload,
 } from "@mafia/shared";
-import { normalizeRoomCode } from "../rooms/ids.js";
 
 /**
  * Shape checks for incoming payloads. They only make sure the data has the
@@ -23,6 +30,8 @@ const ok = <T>(value: T): Parsed<T> => ({ ok: true, value });
 const bad = <T>(message: string): Parsed<T> => ({ ok: false, message });
 
 const MAX_NAME_INPUT = 64;
+const MAX_CODE_INPUT = 16;
+const MAX_PASSWORD_INPUT = ROOM_PASSWORD_MAX_LENGTH * 4;
 const MAX_ID = 64;
 const MAX_CHAT_INPUT = 2000;
 const MAX_SETTINGS_JSON = 2000;
@@ -43,29 +52,101 @@ export function parseEmpty(raw: unknown): Parsed<Record<string, never>> {
   return bad("Expected no data.");
 }
 
+/** Avatars are copied field by field so nothing else rides along. */
+function avatarField(obj: Record<string, unknown>): Avatar | null {
+  const value = obj.avatar;
+  return isAvatar(value) ? { color: value.color, icon: value.icon } : null;
+}
+
+/** Optional string: undefined if absent, null if present but invalid. */
+function optionalString(obj: Record<string, unknown>, key: string, max: number): string | undefined | null {
+  if (obj[key] === undefined) return undefined;
+  return stringField(obj, key, max);
+}
+
+function roomCodeField(obj: Record<string, unknown>): string | null {
+  const raw = obj.roomCode;
+  if (typeof raw !== "string" || raw.length > MAX_CODE_INPUT) return null;
+  return normalizeRoomCode(raw);
+}
+
 export function parseCreateRoom(raw: unknown): Parsed<CreateRoomPayload> {
-  if (!isRecord(raw)) return bad("Expected { name }.");
+  if (!isRecord(raw)) return bad("Expected { name, avatar }.");
   const name = stringField(raw, "name", MAX_NAME_INPUT);
   if (name === null) return bad("name must be a short string.");
-  return ok({ name });
+  const avatar = avatarField(raw);
+  if (!avatar) return bad("Pick an avatar colour and icon.");
+  const customCode = optionalString(raw, "customCode", MAX_CODE_INPUT);
+  if (customCode === null) return bad("customCode must be 4–8 letters or numbers.");
+  const password = optionalString(raw, "password", MAX_PASSWORD_INPUT);
+  if (password === null) return bad("password must be a string.");
+  const value: CreateRoomPayload = { name, avatar };
+  if (customCode !== undefined) value.customCode = customCode;
+  if (password !== undefined) value.password = password;
+  return ok(value);
+}
+
+export function parsePeekRoom(raw: unknown): Parsed<PeekRoomPayload> {
+  if (!isRecord(raw)) return bad("Expected { roomCode }.");
+  const roomCode = roomCodeField(raw);
+  if (roomCode === null) return bad("Room codes are 4–8 letters or numbers.");
+  return ok({ roomCode });
 }
 
 export function parseJoinRoom(raw: unknown): Parsed<JoinRoomPayload> {
-  if (!isRecord(raw)) return bad("Expected { roomCode, name }.");
-  const roomCode = normalizeRoomCode(raw.roomCode);
-  if (roomCode === null) return bad("Room codes are 4 letters.");
+  if (!isRecord(raw)) return bad("Expected { roomCode, name, avatar }.");
+  const roomCode = roomCodeField(raw);
+  if (roomCode === null) return bad("Room codes are 4–8 letters or numbers.");
   const name = stringField(raw, "name", MAX_NAME_INPUT);
   if (name === null) return bad("name must be a short string.");
-  return ok({ roomCode, name });
+  const avatar = avatarField(raw);
+  if (!avatar) return bad("Pick an avatar colour and icon.");
+  const password = optionalString(raw, "password", MAX_PASSWORD_INPUT);
+  if (password === null) return bad("password must be a string.");
+  const value: JoinRoomPayload = { roomCode, name, avatar };
+  if (password !== undefined) value.password = password;
+  return ok(value);
 }
 
 export function parseResume(raw: unknown): Parsed<ResumeSessionPayload> {
   if (!isRecord(raw)) return bad("Expected { roomCode, sessionToken }.");
-  const roomCode = normalizeRoomCode(raw.roomCode);
-  if (roomCode === null) return bad("Room codes are 4 letters.");
+  const roomCode = roomCodeField(raw);
+  if (roomCode === null) return bad("Room codes are 4–8 letters or numbers.");
   const token = raw.sessionToken;
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) return bad("Invalid session token.");
   return ok({ roomCode, sessionToken: token });
+}
+
+export function parseUpdateProfile(raw: unknown): Parsed<UpdateProfilePayload> {
+  if (!isRecord(raw)) return bad("Expected { name?, avatar? }.");
+  const value: UpdateProfilePayload = {};
+  if (raw.name !== undefined) {
+    const name = stringField(raw, "name", MAX_NAME_INPUT);
+    if (name === null) return bad("name must be a short string.");
+    value.name = name;
+  }
+  if (raw.avatar !== undefined) {
+    const avatar = avatarField(raw);
+    if (!avatar) return bad("Pick an avatar colour and icon.");
+    value.avatar = avatar;
+  }
+  if (value.name === undefined && value.avatar === undefined) return bad("Nothing to change.");
+  return ok(value);
+}
+
+export function parseTargetPlayer(raw: unknown): Parsed<TargetPlayerPayload> {
+  if (!isRecord(raw)) return bad("Expected { playerId }.");
+  const playerId = stringField(raw, "playerId", MAX_ID);
+  if (playerId === null) return bad("playerId must be a player id.");
+  return ok({ playerId });
+}
+
+export function parseSetPassword(raw: unknown): Parsed<SetPasswordPayload> {
+  if (!isRecord(raw)) return bad("Expected { password }.");
+  if (raw.password === null) return ok({ password: null });
+  const password = stringField(raw, "password", MAX_PASSWORD_INPUT);
+  if (password === null) return bad("password must be a string or null.");
+  return ok({ password });
 }
 
 /** The engine validates every setting; here we only bound the size. */

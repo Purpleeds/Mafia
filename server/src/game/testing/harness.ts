@@ -1,4 +1,4 @@
-import type { GameErrorCode, Phase, Role, SettingsPatch } from "@mafia/shared";
+import type { Avatar, GameErrorCode, Phase, Role, SettingsPatch } from "@mafia/shared";
 import { applyAction, createLobby, mulberry32, type GameAction, type GameState, type Rng } from "../index.js";
 
 /** A tiny stateful wrapper around the pure engine, for readable tests. */
@@ -73,6 +73,8 @@ export class Game {
   }
 }
 
+export const AVATAR: Avatar = { color: "teal", icon: "fox" };
+
 export function ids(n: number): string[] {
   return Array.from({ length: n }, (_, i) => `p${i + 1}`);
 }
@@ -80,7 +82,7 @@ export function ids(n: number): string[] {
 /** A lobby with players p1..pn (p1 is the host). */
 export function lobby(n: number, seed = 1): Game {
   const g = new Game(seed);
-  for (const id of ids(n)) g.ok({ type: "JOIN", playerId: id, name: `Player ${id.slice(1)}` });
+  for (const id of ids(n)) g.ok({ type: "JOIN", playerId: id, name: `Player ${id.slice(1)}`, avatar: AVATAR });
   return g;
 }
 

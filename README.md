@@ -29,6 +29,22 @@ npm run build
 npm start        # http://localhost:3000
 ```
 
+## Rooms and joining
+
+- Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.
+  Hosts may pick a custom code of 4–8 letters/numbers instead (rude and reserved words are refused).
+- Every room has a join link, `https://<site>/ABCD`, which opens straight on the nickname screen; the lobby shows it as a QR code.
+- Nicknames: unique in the room, up to 16 characters, letters/numbers/spaces/basic punctuation, no rude words. Plus an avatar colour and icon.
+- Optional room password (stored as a salted scrypt hash). The host can set or remove it in the lobby.
+- People joining after the game has started become spectators: they watch, can chat with eliminated players, and become players
+  at the next game.
+- Reconnecting: the session token from create/join is kept in localStorage; after a refresh or a locked phone the client sends
+  `room:resume` and is back in the same seat with the same role. A dropped player shows as "reconnecting" for 60 s before being
+  marked away. Lobby players (and spectators) who stay away 2 more minutes are removed.
+- Host controls: start, settings (including Safe/Normal mode), kick, hand over hosting, password. If the host goes away, hosting
+  passes to the next player in join order.
+- Rooms with nobody connected are deleted after 10 minutes; lobbies nobody touches for 30 minutes, games after 3 hours.
+
 ## Socket events
 
 All client → server events are `(payload, ack)`; the ack receives `{ ok: true, data }` or `{ ok: false, error: { code, message } }`.
@@ -36,29 +52,37 @@ Your identity always comes from the session the socket joined with, never from t
 
 | Client → server | Payload | Notes |
 | --- | --- | --- |
-| `room:create` | `{ name }` | returns `{ roomCode, playerId, sessionToken }`; you are the host |
-| `room:join` | `{ roomCode, name }` | lobby only |
-| `room:resume` | `{ roomCode, sessionToken }` | rejoin after a refresh; store the token in localStorage |
+| `room:create` | `{ name, avatar, customCode?, password? }` | returns `SessionInfo`; you are the host |
+| `room:peek` | `{ roomCode }` | what the join screen needs: password?, lobby or in game, player count |
+| `room:join` | `{ roomCode, name, avatar, password? }` | a player in the lobby, a spectator once the game has started |
+| `room:resume` | `{ roomCode, sessionToken }` | rejoin after a refresh or reconnect |
 | `room:leave` | `{}` | removes you from the lobby; mid-game it counts as a disconnect |
-| `lobby:updateSettings` | `SettingsPatch` | host only |
-| `game:start` / `game:restart` | `{}` | host only |
+| `player:updateProfile` | `{ name?, avatar? }` | lobby only |
+| `host:updateSettings` | `SettingsPatch` | host only, lobby only |
+| `host:start` / `host:restart` | `{}` | host only |
+| `host:kick` / `host:transfer` | `{ playerId }` | host only |
+| `host:setPassword` | `{ password }` | `null` removes it |
 | `game:ackRole` | `{}` | "I've seen my role" |
 | `game:nightAction` | `{ targetId, secondTargetId? }` | Mafia/Doctor/Detective/Bodyguard/Cupid |
 | `game:vote` | `{ targetId }` | a player id or `"skip"` |
-| `chat:send` | `{ channel, text }` | `public`, `mafia` (living Mafia, at night) or `graveyard` (eliminated players) |
+| `chat:send` | `{ channel, text }` | `public`, `mafia` (living Mafia, at night) or `graveyard` (eliminated players and spectators) |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
 
 | Server → client | Payload |
 | --- | --- |
 | `server:hello` | `{ serverNow }` on connect |
-| `game:state` | `{ version, serverNow, view }`: your personalised `GameView`; ignore versions older than the one you have |
-| `chat:message` / `chat:history` | one message / the history you're allowed to see (sent when you join or resume) |
-| `room:removed` | you left, were dropped from the lobby, or the room closed |
+| `game:state` | `{ version, serverNow, room: { code, hasPassword }, view }`; sent only when something you can see changed |
+| `chat:message` / `chat:history` | one message / the history you're allowed to see |
+| `room:removed` | `{ reason: left | kicked | dropped | room_closed, message }` |
 | `session:replaced` | the same session was opened in another tab; this socket is closed |
 | `server:error` | the error for an event sent without an ack |
 
-Countdowns: `view.phaseEndsAt - serverNow` is the time left when the update was sent; count down from there with the local
-monotonic clock. The client clock is never used.
+`version` counts only the updates sent to your seat; reset what you hold when you get a new `SessionInfo`.
+Countdowns: `view.phaseEndsAt - serverNow` is the time left when the update was sent; count down from there with
+`performance.now()`. The client clock is never used.
+
+If the server refuses a connection (`connect_error` with message `RATE_LIMITED`), Socket.IO stops retrying; the client waits a
+few seconds and calls `socket.connect()` again.
 
 ## Render
 
