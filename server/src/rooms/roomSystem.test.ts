@@ -269,17 +269,34 @@ describe("clean-up", () => {
 });
 
 describe("restart recovery", () => {
-  it("marks everyone disconnected and re-arms phase timers for stored rooms", async () => {
+  it("gives everyone the reconnect grace, re-arms phase timers, then marks the missing away", async () => {
     const store = new MemoryRoomStore();
     const first = makeService({ store });
     const room = await started(first, 5);
     const deadline = (await store.get(room.roomCode))?.state.phaseEndsAt;
 
     const second = makeService({ store }); // a fresh process, same store
+    second.clock.now = first.clock.now;
     await second.service.recover();
     expect(second.scheduler.at(room.roomCode)).toBe(deadline);
-    const after = await store.get(room.roomCode);
-    expect(after?.state.players.every((p) => !p.connected)).toBe(true);
+    let after = await store.get(room.roomCode);
+    // still present (so nothing ends early), shown as reconnecting
+    expect(after?.state.players.every((p) => p.connected)).toBe(true);
+    expect(Object.keys(after?.reconnecting ?? {})).toHaveLength(5);
     expect(after?.emptySince).not.toBeNull();
+
+    // two come back within the grace
+    const [a, b] = room.ids as [string, string];
+    must(await second.service.setConnected(room.roomCode, a, true));
+    must(await second.service.setConnected(room.roomCode, b, true));
+    // the grace ends: the other three are marked away
+    const grace = second.scheduler.timers.get(`${room.roomCode}:recovery`);
+    expect(grace?.at).toBe(second.clock.now + 60_000);
+    second.clock.now += 60_000;
+    grace?.fn();
+    await new Promise((r) => setTimeout(r, 10));
+    after = await store.get(room.roomCode);
+    expect(after?.state.players.filter((p) => p.connected).map((p) => p.id).sort()).toEqual([a, b].sort());
+    expect(after?.reconnecting).toEqual({});
   });
 });

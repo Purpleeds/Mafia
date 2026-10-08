@@ -93,6 +93,8 @@ export interface RoomServiceOptions {
   idleLobbyTtlMs?: number;
   /** Remove a lobby player (or any spectator) who has been disconnected this long. */
   lobbyDropMs?: number;
+  /** After a restart, how long everyone counts as "reconnecting" before being marked away (60 s by default). */
+  recoveryGraceMs?: number;
 }
 
 const ok = <T>(value: T): ServiceResult<T> => ({ ok: true, value });
@@ -140,6 +142,7 @@ export class RoomService {
   private readonly idleRoomTtlMs: number;
   private readonly idleLobbyTtlMs: number;
   private readonly lobbyDropMs: number;
+  private readonly recoveryGraceMs: number;
   private readonly mutex = new KeyedMutex();
   /** ownerKey -> codes of their open rooms (rebuilt by recover()). */
   private readonly roomsByOwner = new Map<string, Set<string>>();
@@ -160,6 +163,7 @@ export class RoomService {
     this.idleRoomTtlMs = options.idleRoomTtlMs ?? 3 * 60 * 60_000;
     this.idleLobbyTtlMs = options.idleLobbyTtlMs ?? 30 * 60_000;
     this.lobbyDropMs = options.lobbyDropMs ?? 2 * 60_000;
+    this.recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
   }
 
   // ------------------------------------------------------------ joining
@@ -536,9 +540,12 @@ export class RoomService {
   }
 
   /**
-   * After a server restart with a persistent store: no connections survived, so
-   * mark everyone disconnected and re-arm the phase timers. (A no-op for the
-   * in-memory store, which starts empty.)
+   * After a server restart with a persistent store (Key Value), no connection
+   * survived. Everyone who was connected gets the same grace as a dropped
+   * connection: they show as "reconnecting" and still count as present, so a
+   * night or a vote doesn't end early just because the server restarted. Whoever
+   * hasn't come back when the grace runs out is marked away. Phase timers are
+   * re-armed, and a room nobody returns to closes like any empty room.
    */
   async recover(): Promise<void> {
     const codes = await this.store.codes();
@@ -546,23 +553,43 @@ export class RoomService {
       await this.withRoom(code, async (room) => {
         const now = this.clock();
         for (const id of memberIds(room.state)) {
-          const member = findMember(room.state, id);
-          if (!member?.connected) continue;
-          const r = applyAction(room.state, { type: "DISCONNECT", playerId: id }, this.context());
-          if (r.ok) {
-            room.state = r.state;
-            room.disconnectedAt[id] = now;
-          }
+          if (findMember(room.state, id)?.connected) room.reconnecting[id] = now;
         }
-        room.reconnecting = {};
         room.emptySince = room.emptySince ?? now;
         if (room.ownerKey) this.indexOwner(room.ownerKey, room.code);
         await this.store.save(room);
         this.scheduleTimer(room);
+        this.scheduler.set(`${code}:recovery`, now + this.recoveryGraceMs, () => {
+          void this.endRecoveryGrace(code, now).catch((err: unknown) =>
+            this.logger.error("rooms.recovery_grace_failed", { room: code }, err),
+          );
+        });
         return ok(null);
       });
     }
     if (codes.length > 0) this.logger.info("rooms.recovered", { rooms: codes.length });
+  }
+
+  /** The grace after a restart is over: anyone who still hasn't reconnected is marked away. */
+  private async endRecoveryGrace(code: string, since: number): Promise<void> {
+    await this.withRoom(code, async (room) => {
+      const missing = Object.entries(room.reconnecting)
+        .filter(([, at]) => at <= since)
+        .map(([id]) => id);
+      if (missing.length === 0) return ok(null);
+      const prev = room.state;
+      for (const id of missing) {
+        delete room.reconnecting[id];
+        const r = applyAction(room.state, { type: "DISCONNECT", playerId: id }, this.context());
+        if (r.ok) {
+          room.state = r.state;
+          room.disconnectedAt[id] = this.clock();
+        }
+      }
+      await this.commit(room, prev, { activity: false });
+      this.logger.info("rooms.recovery_missing", { room: code, players: missing.length });
+      return ok(null);
+    });
   }
 
   async roomCount(): Promise<number> {

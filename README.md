@@ -6,7 +6,8 @@ Online multiplayer Mafia / Werewolf with an automatic narrator. TypeScript monor
   facts (`narration.ts`) and the per-mode word lists (`wordlists.ts`), compiled to `dist/` as `@mafia/shared`
 - `server/` – Node + Express + Socket.IO; also serves the built client
   - `game/` – the pure rules engine: `applyAction(state, action, { now, rng })` → new state; `getGameView(state, playerId)` → what one player may know
-  - `rooms/` – `RoomService` (runs the engine per room, timers, chat, clean-up) over a `RoomStore` interface (`MemoryRoomStore` today)
+  - `rooms/` – `RoomService` (runs the engine per room, timers, chat, clean-up) over a `RoomStore` interface
+    (`MemoryRoomStore`, or `PersistentRoomStore` which also writes every room to Key Value/Redis when `REDIS_URL` is set)
   - `narration/` – what the AI narrator may be told (`facts.ts`), the checks every narration must pass (`checks.ts`) and the
     ready-made lines (`templates.ts`)
   - `socket/` – event handlers, payload validation, rate limiting, reconnect handling
@@ -261,7 +262,8 @@ The game runs as one Render **Web Service** (the server also serves the built cl
 | Build command | `npm ci --include=dev && npm run build` (installs everything, then builds `shared`, `server` and `client`, in that order) |
 | Start command | `npm start` (runs the compiled server, `node server/dist/index.js`) |
 | Health check | `/health` (also `/healthz`) answers `200 {"ok":true}`. Set it under *Settings > Health Check Path* |
-| Environment | `NODE_ENV=production`. `PORT` and `RENDER=true` are set by Render; nothing else is needed and there are no secrets |
+| Environment | `NODE_ENV=production`, `REDIS_URL` (the Key Value's internal URL, set on Render only, never in the code). `PORT` and `RENDER=true` are set by Render |
+| Room storage | Render **Key Value** `mafia-rooms` (free plan, Singapore, same workspace), reached over the private network |
 
 **How deploys work.** Auto-deploy is on: every push to `main` builds and deploys by itself (about a minute), and the old version
 keeps serving until the new one is healthy. Don't trigger deploys by hand after a push. Changing an environment variable also
@@ -277,9 +279,17 @@ back-off. Development tools (bots, debug panel) are off in production.
 
 - **The service sleeps after about 15 minutes without visitors.** The first visit afterwards can take up to a minute to wake
   it. The game shows a "Waking up the village…" screen while it connects. Open the site yourself a minute before everyone joins.
-- **Rooms live in memory, so any restart or redeploy ends every running game.** That includes a push to `main` (don't push
-  during a game), a crash, Render's own maintenance restarts and the service going to sleep. Players see their room has closed
-  and have to make a new one. There is no database; nothing is saved between runs.
+- **Rooms survive redeploys, crashes and sleep, but not a Key Value restart.** Every change to a room is written to the Key Value
+  (`mafia:room:<code>`, kept 6 hours after the last change). When the web service starts it loads every room back, resumes the
+  timers, and gives everyone 60 seconds to reconnect before they count as disconnected (nights and votes don't end early because
+  nobody is connected yet). The page reconnects by itself, so players land back in the same seat with the same role.
+- **The free Key Value keeps data in memory only.** If Render restarts the Key Value itself (maintenance, which can happen at any
+  time), every saved room is lost and running games end, as before. You get one free Key Value per workspace, and upgrading it
+  to a paid plan starts it empty.
+- **If the Key Value can't be reached** at start-up (no answer within 5 s), the server logs `store.kv_unavailable fallback=memory`
+  and runs with rooms in memory only. If it goes away while running, games carry on in memory and failed writes are logged as
+  `store.kv_write_failed` (at most once a minute). The log line `store.ready kind=keyvalue rooms=N` shows it is working.
+- Locally, rooms live in memory unless you set `REDIS_URL` (e.g. `REDIS_URL=redis://localhost:6379 npm start`).
 - The free plan has limited CPU and 512 MB of memory, plenty for a handful of rooms.
 
 ## Playing as the host: the AI narrator (Puter.js)
