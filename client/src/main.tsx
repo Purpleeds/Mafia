@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { initConnection } from "./state/controller";
 import "./styles.css";
+import "./game.css";
 
 initConnection();
 

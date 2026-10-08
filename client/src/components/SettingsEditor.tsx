@@ -159,6 +159,21 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
           />
         </label>
 
+        <label htmlFor="setting-show-votes" className="switch-row">
+          <span className="switch-text">
+            <span>Show who voted for whom</span>
+            <span className="field-hint">Vote counts are always shown. Turn this off to keep each vote secret.</span>
+          </span>
+          <input
+            id="setting-show-votes"
+            type="checkbox"
+            role="switch"
+            className="switch"
+            checked={settings.showVotes}
+            onChange={(e) => send({ showVotes: e.target.checked })}
+          />
+        </label>
+
         <details className="advanced">
           <summary>Timers</summary>
           <div className="timer-grid">

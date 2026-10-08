@@ -32,6 +32,10 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
           <dd>{settings.revealRoleOnDeath ? "Revealed" : "Kept secret"}</dd>
         </div>
         <div>
+          <dt>Votes</dt>
+          <dd>{settings.showVotes ? "Everyone sees who voted for whom" : "Only the counts are shown"}</dd>
+        </div>
+        <div>
           <dt>Timers</dt>
           <dd>{TIMER_KEYS.map((k) => `${TIMER_LABEL[k]} ${formatSeconds(settings.timers[k])}`).join(" · ")}</dd>
         </div>

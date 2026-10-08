@@ -10,6 +10,7 @@
   --bg-gradient-a: #1b1840;
   --bg-gradient-b: #0b0b14;
   --surface: rgba(28, 27, 48, 0.92);
+  --surface-solid: #1c1b30;
   --surface-2: #26244a;
   --surface-3: #312f5c;
   --border: #3b3966;
@@ -42,6 +43,7 @@
   --bg-gradient-a: #2a0f14;
   --bg-gradient-b: #0a0a0c;
   --surface: rgba(24, 22, 26, 0.94);
+  --surface-solid: #201d21;
   --surface-2: #2a2529;
   --surface-3: #3a3236;
   --border: #4a3f44;

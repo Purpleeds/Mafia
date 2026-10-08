@@ -51,3 +51,13 @@ export function formatSeconds(totalSeconds: number): string {
   const rest = s % 60;
   return rest === 0 ? `${m} min` : `${m}:${String(rest).padStart(2, "0")}`;
 }
+
+export const WINNER_EMOJI: Record<Winner, string> = { town: "🏡", mafia: "🕶️", jester: "🃏" };
+
+/** Words used in the game-over timeline. */
+export const NIGHT_OUTCOME_LABEL = {
+  no_attack: "The Mafia didn't pick anyone.",
+  saved: "The Doctor saved them.",
+  guarded: "The Bodyguard took the hit.",
+  killed: "They were eliminated.",
+} as const;

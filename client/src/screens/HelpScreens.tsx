@@ -1,0 +1,37 @@
+import { HowToPlayContent, RoleGuideContent } from "../components/RulesContent";
+import { HOW_TO_PLAY_PATH, ROLE_GUIDE_PATH, goHome, navigate } from "../lib/router";
+
+function HelpPage({ title, other, children }: { title: string; other: { label: string; path: string }; children: React.ReactNode }) {
+  return (
+    <div className="screen help-page">
+      <div className="help-nav">
+        <button type="button" className="btn btn-ghost" onClick={() => (window.history.length > 1 ? window.history.back() : goHome())}>
+          <span aria-hidden="true">← </span>Back
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => navigate(other.path)}>
+          {other.label}
+        </button>
+      </div>
+      <h1 className="page-title">{title}</h1>
+      {children}
+    </div>
+  );
+}
+
+export function HowToPlayScreen() {
+  return (
+    <HelpPage title="How to play" other={{ label: "Role guide →", path: ROLE_GUIDE_PATH }}>
+      <section className="card">
+        <HowToPlayContent />
+      </section>
+    </HelpPage>
+  );
+}
+
+export function RoleGuideScreen() {
+  return (
+    <HelpPage title="Role guide" other={{ label: "How to play →", path: HOW_TO_PLAY_PATH }}>
+      <RoleGuideContent />
+    </HelpPage>
+  );
+}

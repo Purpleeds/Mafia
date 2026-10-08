@@ -1,4 +1,6 @@
+import { useState, type ReactNode } from "react";
 import { MAX_PLAYERS, MIN_PLAYERS } from "@mafia/shared";
+import { HelpSheet } from "../components/HelpSheet";
 import { InviteCard } from "../components/InviteCard";
 import { LeaveRoomButton } from "../components/LeaveRoomButton";
 import { PlayerList, SpectatorList } from "../components/PlayerList";
@@ -11,8 +13,18 @@ import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import type { ReceivedState } from "../state/store";
 
+/** A lobby block; `order` sets its place in the single mobile column (the two-column laptop layout keeps it). */
+function Block({ order, children }: { order: number; children: ReactNode }) {
+  return (
+    <div className="lobby-item" style={{ order }}>
+      {children}
+    </div>
+  );
+}
+
 export function LobbyScreen({ received }: { received: ReceivedState }) {
   const { view, room } = received.payload;
+  const [helpOpen, setHelpOpen] = useState(false);
   const you = view.you;
   const isHost = you?.isHost === true;
   const playerCount = view.players.length;
@@ -20,8 +32,8 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
   const host = view.players.find((p) => p.id === view.hostId) ?? null;
 
   return (
-    <div className="screen lobby">
-      <RoomHeader code={room.code} hasPassword={room.hasPassword} large />
+    <div className="screen screen-wide lobby">
+      <RoomHeader code={room.code} hasPassword={room.hasPassword} large mode={view.settings.contentMode} />
 
       {you?.isSpectator ? (
         <p className="info-banner" role="status">
@@ -29,41 +41,71 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
         </p>
       ) : null}
 
-      <section className="card" aria-labelledby="players-title">
-        <div className="card-header">
-          <h2 id="players-title" className="card-title">
-            Players
-          </h2>
-          <span className="count" aria-label={`${playerCount} of ${MAX_PLAYERS} players`}>
-            {playerCount}/{MAX_PLAYERS}
-          </span>
+      <div className="lobby-grid">
+        <div className="lobby-col">
+          <Block order={1}>
+            <section className="card" aria-labelledby="players-title">
+              <div className="card-header">
+                <h2 id="players-title" className="card-title">
+                  Players
+                </h2>
+                <span className="count" aria-label={`${playerCount} of ${MAX_PLAYERS} players`}>
+                  {playerCount}/{MAX_PLAYERS}
+                </span>
+              </div>
+              <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={isHost} phase={view.phase} />
+              {playerCount < MIN_PLAYERS ? (
+                <p className="field-hint">
+                  Need at least {MIN_PLAYERS} players – invite {MIN_PLAYERS - playerCount} more.
+                </p>
+              ) : null}
+            </section>
+          </Block>
+
+          <Block order={2}>
+            <StartPanel isHost={isHost} connectedCount={connectedCount} hostName={host?.name ?? null} />
+          </Block>
+
+          <Block order={4}>
+            <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={isHost} />
+          </Block>
+
+          <Block order={5}>
+            {you ? (
+              <ProfileEditor
+                key={`${you.name}|${you.avatar.color}|${you.avatar.icon}`}
+                name={you.name}
+                avatar={you.avatar}
+              />
+            ) : null}
+          </Block>
         </div>
-        <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={isHost} phase={view.phase} />
-        {playerCount < MIN_PLAYERS ? (
-          <p className="field-hint">
-            Need at least {MIN_PLAYERS} players – invite {MIN_PLAYERS - playerCount} more.
-          </p>
-        ) : null}
-      </section>
 
-      <StartPanel isHost={isHost} connectedCount={connectedCount} hostName={host?.name ?? null} />
+        <div className="lobby-col">
+          <Block order={3}>
+            <InviteCard code={room.code} hasPassword={room.hasPassword} />
+          </Block>
 
-      <InviteCard code={room.code} hasPassword={room.hasPassword} />
+          <Block order={6}>
+            {isHost ? (
+              <>
+                <SettingsEditor settings={view.settings} playerCount={playerCount} />
+                <PasswordEditor hasPassword={room.hasPassword} />
+              </>
+            ) : (
+              <SettingsSummary settings={view.settings} playerCount={playerCount} />
+            )}
+          </Block>
+        </div>
+      </div>
 
-      <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={isHost} />
-
-      {you ? <ProfileEditor key={`${you.name}|${you.avatar.color}|${you.avatar.icon}`} name={you.name} avatar={you.avatar} /> : null}
-
-      {isHost ? (
-        <>
-          <SettingsEditor settings={view.settings} playerCount={playerCount} />
-          <PasswordEditor hasPassword={room.hasPassword} />
-        </>
-      ) : (
-        <SettingsSummary settings={view.settings} playerCount={playerCount} />
-      )}
-
-      <LeaveRoomButton inGame={false} />
+      <div className="lobby-footer">
+        <button type="button" className="btn btn-block" onClick={() => setHelpOpen(true)}>
+          How to play and role guide
+        </button>
+        <LeaveRoomButton inGame={false} />
+      </div>
+      {helpOpen ? <HelpSheet mode={view.settings.contentMode} onClose={() => setHelpOpen(false)} /> : null}
     </div>
   );
 }

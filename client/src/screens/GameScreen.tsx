@@ -1,131 +1,106 @@
-import type { GameView, PublicPlayerView } from "@mafia/shared";
-import { AvatarBadge } from "../components/AvatarBadge";
-import { Countdown } from "../components/Countdown";
-import { ErrorText } from "../components/ErrorText";
+import { useEffect, useState } from "react";
+import { ChatPanel } from "../components/ChatPanel";
+import { GameTopBar } from "../components/GameTopBar";
+import { HelpSheet } from "../components/HelpSheet";
 import { LeaveRoomButton } from "../components/LeaveRoomButton";
 import { PlayerList, SpectatorList } from "../components/PlayerList";
-import { RoomHeader } from "../components/RoomHeader";
-import { PHASE_LABEL, ROLE_LABEL, WINNER_LABEL } from "../lib/labels";
-import { useAction } from "../lib/useAction";
-import { call } from "../net/socket";
 import type { ReceivedState } from "../state/store";
+import { DayScreen } from "./game/DayScreen";
+import { GameOverScreen } from "./game/GameOverScreen";
+import { NightResultsScreen } from "./game/NightResultsScreen";
+import { NightScreen } from "./game/NightScreen";
+import { RoleRevealScreen } from "./game/RoleRevealScreen";
+import { VoteResultsScreen } from "./game/VoteResultsScreen";
+import { VotingScreen } from "./game/VotingScreen";
+import { myPlayer, nameOf } from "./game/common";
 
-/** Placeholder for the real game screens (a later step): phase, timer, your role and the players. */
+/** Every in-game phase: a status bar, the phase's screen, and a side column (chat and players) where it helps. */
 export function GameScreen({ received }: { received: ReceivedState }) {
-  const { view, room, serverNow } = received.payload;
+  const { view } = received.payload;
+  const [helpOpen, setHelpOpen] = useState(false);
   const you = view.you;
-  const isHost = you?.isHost === true;
-  const me = you ? (view.players.find((p) => p.id === you.id) ?? null) : null;
+  const me = myPlayer(view);
+  const watching = !!you?.isSpectator || !me;
+  const out = !!me && !me.alive;
+
+  // Lets the stylesheet dim the screen at night.
+  useEffect(() => {
+    document.documentElement.dataset.phase = view.phase;
+    return () => {
+      delete document.documentElement.dataset.phase;
+    };
+  }, [view.phase]);
+
+  const chatPhase = ["NIGHT_RESULTS", "DAY_DISCUSSION", "VOTING", "VOTE_RESULTS", "GAME_OVER"].includes(view.phase);
+  const graveyardNight = view.phase === "NIGHT" && (watching || out);
+  const showSide = chatPhase || graveyardNight;
+
+  let screen;
+  switch (view.phase) {
+    case "ROLE_REVEAL":
+      screen = <RoleRevealScreen received={received} />;
+      break;
+    case "NIGHT":
+      screen = <NightScreen received={received} />;
+      break;
+    case "NIGHT_RESULTS":
+      screen = <NightResultsScreen received={received} />;
+      break;
+    case "DAY_DISCUSSION":
+      screen = <DayScreen received={received} />;
+      break;
+    case "VOTING":
+      screen = <VotingScreen received={received} />;
+      break;
+    case "VOTE_RESULTS":
+      screen = <VoteResultsScreen received={received} />;
+      break;
+    default:
+      screen = <GameOverScreen received={received} />;
+  }
 
   return (
-    <div className="screen game">
-      <RoomHeader code={room.code} hasPassword={room.hasPassword}>
-        <div className="phase-bar">
-          <span className="phase-name">{PHASE_LABEL[view.phase]}</span>
-          {view.round > 0 ? <span className="tag">Round {view.round}</span> : null}
-          <Countdown endsAt={view.phaseEndsAt} serverNow={serverNow} receivedAt={received.receivedAt} />
-        </div>
-      </RoomHeader>
+    <div className={`screen screen-wide game phase-${view.phase.toLowerCase().replace(/_/g, "-")}`}>
+      <GameTopBar received={received} onHelp={() => setHelpOpen(true)} />
 
-      {you?.isSpectator || !me ? (
+      {watching ? (
         <p className="info-banner" role="status">
-          <span aria-hidden="true">👀 </span>You're watching – you'll join the next game.
+          <span aria-hidden="true">👀 </span>You're watching. You'll join the next game.
+        </p>
+      ) : null}
+      {out && view.phase !== "GAME_OVER" ? (
+        <p className="info-banner" role="status">
+          <span aria-hidden="true">✝ </span>You've been eliminated. You can watch and use the graveyard chat, but you
+          can't talk to the living or vote.
+        </p>
+      ) : null}
+      {you?.loverIds && view.phase !== "GAME_OVER" ? (
+        <p className="info-banner" role="status">
+          <span aria-hidden="true">💘 </span>
+          {you.loverIds.includes(you.id)
+            ? `You and ${nameOf(view, you.loverIds.find((id) => id !== you.id) ?? "")} are lovers. If one goes, so does the other.`
+            : `You linked ${nameOf(view, you.loverIds[0])} and ${nameOf(view, you.loverIds[1])}.`}
         </p>
       ) : null}
 
-      {view.phase === "GAME_OVER" ? <GameOverCard view={view} isHost={isHost} /> : null}
+      <div className={`game-grid${showSide ? " has-side" : ""}`}>
+        <div className="game-main">{screen}</div>
+        {showSide ? (
+          <aside className="game-side" aria-label="Chat and players">
+            <ChatPanel view={view} />
+            <section className="card" aria-labelledby="game-players-title">
+              <h2 id="game-players-title" className="card-title">
+                Players
+              </h2>
+              <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={you?.isHost === true} phase={view.phase} />
+            </section>
+            <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={you?.isHost === true} />
+          </aside>
+        ) : null}
+      </div>
 
-      {you && me && you.role ? <RoleCard view={view} me={me} /> : null}
-
-      <section className="card" aria-labelledby="game-players-title">
-        <h2 id="game-players-title" className="card-title">
-          Players
-        </h2>
-        <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={isHost} phase={view.phase} />
-      </section>
-
-      <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={isHost} />
-
-      <LeaveRoomButton inGame={view.phase !== "GAME_OVER" && !you?.isSpectator} />
+      <LeaveRoomButton inGame={view.phase !== "GAME_OVER" && !watching} />
+      {helpOpen ? <HelpSheet mode={view.settings.contentMode} onClose={() => setHelpOpen(false)} /> : null}
     </div>
-  );
-}
-
-function nameOf(view: GameView, id: string): string {
-  return view.players.find((p) => p.id === id)?.name ?? "Someone";
-}
-
-function RoleCard({ view, me }: { view: GameView; me: PublicPlayerView }) {
-  const action = useAction();
-  const you = view.you;
-  if (!you?.role) return null;
-  const needsAck = view.phase === "ROLE_REVEAL" && !me.done && me.alive;
-  const players = view.players.filter((p) => p.alive && !p.kicked);
-  const ready = players.filter((p) => p.done).length;
-
-  return (
-    <section className="card role-card" aria-labelledby="role-title">
-      <p className="eyebrow">Your role</p>
-      <h2 id="role-title" className="role-name">
-        {ROLE_LABEL[you.role]}
-      </h2>
-      {!you.alive ? <p className="tag tag-out">You've been eliminated</p> : null}
-      {you.teammateIds.length > 0 ? (
-        <p>Your fellow Mafia: {you.teammateIds.map((id) => nameOf(view, id)).join(", ")}</p>
-      ) : null}
-      {you.loverIds ? <p>Lovers: {you.loverIds.map((id) => nameOf(view, id)).join(" & ")}</p> : null}
-      {view.phase === "ROLE_REVEAL" ? (
-        needsAck ? (
-          <button
-            type="button"
-            className="btn btn-primary btn-block btn-large"
-            disabled={action.pending}
-            onClick={() => void action.run(() => call("game:ackRole", {}))}
-          >
-            Got it
-          </button>
-        ) : (
-          <p className="field-hint" role="status">
-            Waiting for everyone ({ready}/{players.length} ready)…
-          </p>
-        )
-      ) : null}
-      <ErrorText error={action.error} />
-    </section>
-  );
-}
-
-function GameOverCard({ view, isHost }: { view: GameView; isHost: boolean }) {
-  const action = useAction();
-  const winners = view.players.filter((p) => view.winnerIds.includes(p.id));
-  return (
-    <section className="card card-highlight center-block" aria-labelledby="winner-title">
-      <h2 id="winner-title" className="winner">
-        {view.winner ? WINNER_LABEL[view.winner] : "Game over"}
-      </h2>
-      {winners.length > 0 ? (
-        <ul className="winner-list">
-          {winners.map((p) => (
-            <li key={p.id}>
-              <AvatarBadge avatar={p.avatar} size={28} /> {p.name}
-              {p.role ? ` – ${ROLE_LABEL[p.role]}` : ""}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {isHost ? (
-        <button
-          type="button"
-          className="btn btn-primary btn-block btn-large"
-          disabled={action.pending}
-          onClick={() => void action.run(() => call("host:restart", {}))}
-        >
-          Back to lobby
-        </button>
-      ) : (
-        <p className="field-hint">Waiting for the host to start a new round.</p>
-      )}
-      <ErrorText error={action.error} />
-    </section>
   );
 }

@@ -29,6 +29,18 @@ npm run build
 npm start        # http://localhost:3000
 ```
 
+## Screens (client)
+
+Home (create or join; the code box jumps into the room as soon as it finds one) → Lobby (big code, link, QR code, Safe/Normal badge,
+host settings) → Role reveal (tap-to-flip 3D card; it hides again when the page loses focus) → Night → Morning news (typewriter
+narrator) → Day (player grid, chat, countdown) → Voting (tap to vote, live counts) → Vote results → Game over (roles, timeline,
+Play Again). "How to play" and the role guide are pages (`/how-to-play`, `/role-guide`) and a help dialog inside the game.
+The mode badge, room code and connection status are in the top bar on every in-game screen.
+
+At night every player sees the same screen: players with a night power use it for real, everyone else gets a look-alike grid that
+sends nothing to the server, so a glance at someone's phone tells you nothing about their role. The host can hide *who* voted for
+whom (counts stay visible) with the "Show who voted for whom" setting.
+
 ## Rooms and joining
 
 - Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.

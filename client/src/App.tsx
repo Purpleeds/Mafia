@@ -6,6 +6,7 @@ import { ReplacedOverlay } from "./components/ReplacedOverlay";
 import { Toasts } from "./components/Toasts";
 import { canonicalizeLocation, parseRoute, usePathname } from "./lib/router";
 import { HomeScreen } from "./screens/HomeScreen";
+import { HowToPlayScreen, RoleGuideScreen } from "./screens/HelpScreens";
 import { RoomRoute } from "./screens/RoomRoute";
 import { openRoom } from "./state/controller";
 import { useAppState } from "./state/store";
@@ -36,7 +37,17 @@ export function App() {
     <>
       <Background mode={mode} />
       <ConnectionBanner />
-      <main className="app-main">{roomCode ? <RoomRoute key={roomCode} code={roomCode} /> : <HomeScreen />}</main>
+      <main className="app-main">
+        {roomCode ? (
+          <RoomRoute key={roomCode} code={roomCode} />
+        ) : route.name === "how-to-play" ? (
+          <HowToPlayScreen />
+        ) : route.name === "role-guide" ? (
+          <RoleGuideScreen />
+        ) : (
+          <HomeScreen />
+        )}
+      </main>
       <Toasts />
       <ReplacedOverlay />
     </>

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CUSTOM_CODE_MAX_LENGTH,
   ROOM_PASSWORD_MAX_LENGTH,
@@ -15,8 +15,9 @@ import { ErrorText } from "../components/ErrorText";
 import { NicknameField } from "../components/NicknameField";
 import { randomAvatar } from "../lib/avatars";
 import { friendlyError } from "../lib/errors";
-import { goToRoom } from "../lib/router";
+import { HOW_TO_PLAY_PATH, ROLE_GUIDE_PATH, goToRoom, navigate } from "../lib/router";
 import { loadActiveRoom, loadProfile } from "../lib/storage";
+import { call } from "../net/socket";
 import { createRoom } from "../state/controller";
 import { useAppState } from "../state/store";
 import { NoticeBanner } from "./NoticeBanner";
@@ -50,6 +51,15 @@ export function HomeScreen() {
 
       <JoinByCode />
       <CreateRoomCard />
+
+      <nav className="home-links" aria-label="Help">
+        <button type="button" className="btn btn-ghost" onClick={() => navigate(HOW_TO_PLAY_PATH)}>
+          How to play
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => navigate(ROLE_GUIDE_PATH)}>
+          Role guide
+        </button>
+      </nav>
     </div>
   );
 }
@@ -70,10 +80,32 @@ function codeFromInput(raw: string): string {
 function JoinByCode() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "looking" | "missing" | "offline">("idle");
+  const ticket = useRef(0);
+  const normalized = normalizeRoomCode(code);
+
+  // Auto-advance: once the typed code is a real room, go straight to it. Waits a moment after the
+  // last keystroke, so longer custom codes (up to 8 characters) can still be typed.
+  useEffect(() => {
+    setStatus("idle");
+    if (!normalized) return;
+    const mine = ++ticket.current;
+    const timer = window.setTimeout(() => {
+      setStatus("looking");
+      void call("room:peek", { roomCode: normalized }).then((result) => {
+        if (ticket.current !== mine) return;
+        if (result.ok) goToRoom(normalized);
+        else setStatus(result.error.code === "ROOM_NOT_FOUND" ? "missing" : "offline");
+      });
+    }, 450);
+    return () => {
+      window.clearTimeout(timer);
+      ticket.current++;
+    };
+  }, [normalized]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const normalized = normalizeRoomCode(code);
     if (!normalized) {
       setError("Room codes are 4–8 letters or numbers, like ABCD.");
       return;
@@ -84,7 +116,7 @@ function JoinByCode() {
   return (
     <section className="card" aria-labelledby="join-title">
       <h2 id="join-title" className="card-title">
-        Join a room
+        Join Room
       </h2>
       <form onSubmit={submit} noValidate>
         <label htmlFor="join-code" className="sr-only">
@@ -100,17 +132,31 @@ function JoinByCode() {
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
+          maxLength={CUSTOM_CODE_MAX_LENGTH + 24}
           enterKeyHint="go"
-          aria-describedby="join-code-error"
+          aria-describedby="join-code-error join-code-status"
           aria-invalid={error ? true : undefined}
           onChange={(e) => {
             setCode(codeFromInput(e.target.value));
             setError(null);
           }}
         />
+        <p id="join-code-status" className="field-hint center-text" role="status">
+          {status === "looking" ? (
+            <>
+              <span className="spinner" aria-hidden="true" /> Looking for room {normalized}…
+            </>
+          ) : status === "missing" ? (
+            `No room found with code ${normalized}. Check the code (some are longer).`
+          ) : status === "offline" ? (
+            "Can't reach the server right now."
+          ) : (
+            "Type the code and you'll jump straight in."
+          )}
+        </p>
         <ErrorText id="join-code-error" error={error} />
         <button type="submit" className="btn btn-primary btn-block btn-large">
-          Join
+          Join Room
         </button>
       </form>
     </section>
@@ -128,7 +174,7 @@ function CreateRoomCard() {
         <CreateRoomForm />
       ) : (
         <button type="button" className="btn btn-secondary btn-block btn-large" onClick={() => setOpen(true)}>
-          Create a room
+          Create Room
         </button>
       )}
     </section>
@@ -252,7 +298,7 @@ function CreateRoomForm() {
 
       <ErrorText error={formError} />
       <button type="submit" className="btn btn-primary btn-block btn-large" disabled={pending}>
-        {pending ? "Creating…" : "Create room"}
+        {pending ? "Creating…" : "Create Room"}
       </button>
     </form>
   );

@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
+import type { ContentMode } from "@mafia/shared";
 import { goHome } from "../lib/router";
+import { ConnectionIndicator } from "./ConnectionIndicator";
+import { ModeBadge } from "./ModeBadge";
 
 /** Room code (huge in the lobby), private-room lock and whatever the screen adds. */
 export function RoomHeader({
   code,
   hasPassword,
   large,
+  mode,
   children,
 }: {
   code: string;
   hasPassword: boolean;
   large?: boolean;
+  mode?: ContentMode;
   children?: ReactNode;
 }) {
   return (
@@ -31,6 +36,10 @@ export function RoomHeader({
       <h1 className="room-code" aria-label={`Room code ${code.split("").join(" ")}`}>
         {code}
       </h1>
+      <div className="room-meta">
+        {mode ? <ModeBadge mode={mode} large /> : null}
+        <ConnectionIndicator />
+      </div>
       {children}
     </header>
   );
