@@ -89,6 +89,8 @@ export interface GameSettings {
   tieRule: TieRule;
   /** Show a player's role to everyone when they are eliminated. */
   revealRoleOnDeath: boolean;
+  /** Show who voted for whom (live, and in the results). Vote counts are always shown. */
+  showVotes: boolean;
 }
 
 export interface SettingsPatch {
@@ -98,6 +100,7 @@ export interface SettingsPatch {
   timers?: Partial<TimerSettings>;
   tieRule?: TieRule;
   revealRoleOnDeath?: boolean;
+  showVotes?: boolean;
 }
 
 export const TIMER_LIMITS: Record<keyof TimerSettings, { min: number; max: number }> = {
@@ -126,6 +129,7 @@ export function defaultSettings(): GameSettings {
     },
     tieRule: "no_elimination",
     revealRoleOnDeath: true,
+    showVotes: true,
   };
 }
 
@@ -184,7 +188,16 @@ export interface VoteReportView extends VoteRoundSummaryView {
   deaths: DeathView[];
 }
 
+export interface LiveVotes {
+  /** option (player id or SKIP) -> ballots cast so far. Always shown. */
+  tally: Record<string, number>;
+  /** voter id -> option; null when the host hides who voted for whom. */
+  ballots: Record<string, string> | null;
+}
+
 export interface VotingView {
+  /** Live counts while voting is open. */
+  live: LiveVotes;
   round: 1 | 2;
   /** null = every living player; set during a revote. */
   candidateIds: string[] | null;
@@ -209,6 +222,30 @@ export interface InvestigationView {
   isMafia: boolean;
 }
 
+/** Chat channels this person may use right now (the server decides). */
+export interface ChatAccess {
+  write: ChatChannel[];
+  read: ChatChannel[];
+}
+
+export interface TimelineNight {
+  mafiaTargetId: string | null;
+  protectedId: string | null;
+  guardedId: string | null;
+  /** Cupid's pair (first night). */
+  linkedIds: [string, string] | null;
+  investigation: { targetId: string; isMafia: boolean } | null;
+  /** no_attack: the Mafia chose no one. saved: the Doctor protected the target. guarded: the Bodyguard took the hit. */
+  outcome: "no_attack" | "saved" | "guarded" | "killed";
+  deaths: DeathView[];
+}
+
+export interface TimelineEntry {
+  round: number;
+  night: TimelineNight;
+  vote: { outcome: VoteOutcome; tally: Record<string, number>; deaths: DeathView[] } | null;
+}
+
 export interface YouView {
   id: string;
   name: string;
@@ -225,6 +262,7 @@ export interface YouView {
   /** Detective only. */
   investigations: InvestigationView[];
   nightAction: NightActionView | null;
+  chat: ChatAccess;
 }
 
 /**
@@ -276,4 +314,6 @@ export interface GameView {
   winner: Winner | null;
   /** Game over only. */
   winnerIds: string[];
+  /** What happened each round, including the secrets: game over only (empty before). */
+  timeline: TimelineEntry[];
 }

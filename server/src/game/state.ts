@@ -23,6 +23,7 @@ export function createLobby(settings: GameSettings = defaultSettings()): GameSta
     doctorLastProtectedId: null,
     investigations: [],
     mafiaCount: 0,
+    history: [],
     pendingWinner: null,
     winner: null,
   };
@@ -61,6 +62,7 @@ export function resetGameData(state: GameState): void {
   state.doctorLastProtectedId = null;
   state.investigations = [];
   state.mafiaCount = 0;
+  state.history = [];
   state.pendingWinner = null;
   state.winner = null;
   state.phaseEndsAt = null;

@@ -36,6 +36,8 @@ export interface GameState {
   doctorLastProtectedId: string | null;
   investigations: Investigation[];
   mafiaCount: number;
+  /** One entry per round, kept for the game-over timeline (never sent before then). */
+  history: RoundLog[];
   /** Decided when a result is announced; takes effect when that results phase ends. */
   pendingWinner: Winner | null;
   winner: Winner | null;
@@ -97,6 +99,22 @@ export interface NightReport {
 export interface VoteReport extends RoundSummary {
   outcome: VoteOutcome;
   deaths: DeathRecord[];
+}
+
+export interface NightLog {
+  mafiaTargetId: string | null;
+  protectedId: string | null;
+  guardedId: string | null;
+  linkedIds: [string, string] | null;
+  investigation: { targetId: string; isMafia: boolean } | null;
+  outcome: "no_attack" | "saved" | "guarded" | "killed";
+  deaths: DeathRecord[];
+}
+
+export interface RoundLog {
+  round: number;
+  night: NightLog;
+  vote: { outcome: VoteOutcome; tally: Record<string, number>; deaths: DeathRecord[] } | null;
 }
 
 export interface Investigation {

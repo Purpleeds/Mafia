@@ -45,14 +45,15 @@ describe("day vote", () => {
     expect(g.fail({ type: "CAST_VOTE", playerId: "ghost", targetId: "p1" })).toBe("NOT_IN_GAME");
   });
 
-  it("keeps ballots secret until the result", () => {
-    const g = toVoting();
+  it("keeps ballots secret when the host hides who voted for whom", () => {
+    const g = toVoting({ showVotes: false });
     g.vote("p1", "p4");
     const view = getGameView(g.state, "p2");
     expect(view.voting?.myBallot).toBeNull();
     expect(getGameView(g.state, "p1").voting?.myBallot).toBe("p4");
     expect(view.players.find((p) => p.id === "p1")?.done).toBe(true);
-    expect(JSON.stringify(view)).not.toContain('"ballots"');
+    expect(view.voting?.live.ballots).toBeNull();
+    expect(JSON.stringify(view)).not.toContain('"ballots":{');
   });
 
   it("publishes who voted for whom once it closes", () => {

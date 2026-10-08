@@ -2,7 +2,7 @@ import type { GameError, NightActionKind } from "@mafia/shared";
 import { killPlayers } from "./deaths.js";
 import { pickRandom } from "./rng.js";
 import { findPlayer, livingPlayers } from "./state.js";
-import type { DeathRecord, GameEnv, GameState, PlayerState } from "./types.js";
+import type { DeathRecord, GameEnv, GameState, NightLog, PlayerState } from "./types.js";
 import { evaluateWinner } from "./win.js";
 
 export interface AvailableNightAction {
@@ -154,11 +154,17 @@ export function resolveNight(state: GameState, env: GameEnv): void {
 
   const initial: DeathRecord[] = [];
   const target = mafiaTarget(state, env);
-  if (target !== null && night.protect !== target) {
+  let outcome: NightLog["outcome"] = target === null ? "no_attack" : "killed";
+  if (target !== null && night.protect === target) {
+    outcome = "saved";
+  } else if (target !== null) {
     let victim = target;
     if (night.guard === target) {
       const bodyguard = livingPlayers(state).find((p) => p.role === "bodyguard");
-      if (bodyguard && bodyguard.id !== target) victim = bodyguard.id;
+      if (bodyguard && bodyguard.id !== target) {
+        victim = bodyguard.id;
+        outcome = "guarded";
+      }
     }
     initial.push({ playerId: victim, cause: "mafia" });
   }
@@ -166,5 +172,20 @@ export function resolveNight(state: GameState, env: GameEnv): void {
   state.doctorLastProtectedId = night.protect;
   const deaths = killPlayers(state, initial);
   state.nightReport = { round: state.round, deaths };
+  state.history.push({
+    round: state.round,
+    night: {
+      mafiaTargetId: target,
+      protectedId: night.protect,
+      guardedId: night.guard,
+      linkedIds: night.link,
+      investigation: night.investigate
+        ? { targetId: night.investigate, isMafia: findPlayer(state, night.investigate)?.role === "mafia" }
+        : null,
+      outcome,
+      deaths,
+    },
+    vote: null,
+  });
   state.pendingWinner = evaluateWinner(state);
 }

@@ -1,13 +1,16 @@
 import type {
+  ChatChannel,
   DeathView,
   GameView,
   NightActionView,
   PublicPlayerView,
   Role,
   SpectatorView,
+  TimelineEntry,
   VoteRoundSummaryView,
   YouView,
 } from "@mafia/shared";
+import { canRead, canWrite } from "./chat.js";
 import { availableNightAction } from "./night.js";
 import { findPlayer, findSpectator, has } from "./state.js";
 import type { DeathRecord, GameState, PlayerState, SpectatorState } from "./types.js";
@@ -62,14 +65,25 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     ? { round: state.nightReport.round, deaths: deathViews(state.nightReport.deaths) }
     : null;
 
+  // Who voted for whom is only public if the host allows it; the counts always are.
+  const showVotes = state.settings.showVotes;
   const voteReport = state.voteReport
-    ? { ...state.voteReport, deaths: deathViews(state.voteReport.deaths) }
+    ? {
+        ...state.voteReport,
+        ballots: showVotes ? { ...state.voteReport.ballots } : {},
+        deaths: deathViews(state.voteReport.deaths),
+      }
     : null;
 
   let voting: GameView["voting"] = null;
   if (state.phase === "VOTING" && state.voting) {
-    const previous: (VoteRoundSummaryView & { tiedOptions: string[] }) | null = state.voting.previous;
+    const previous: (VoteRoundSummaryView & { tiedOptions: string[] }) | null = state.voting.previous
+      ? { ...state.voting.previous, ballots: showVotes ? { ...state.voting.previous.ballots } : {} }
+      : null;
+    const liveTally: Record<string, number> = {};
+    for (const choice of Object.values(state.voting.ballots)) liveTally[choice] = (liveTally[choice] ?? 0) + 1;
     voting = {
+      live: { tally: liveTally, ballots: showVotes ? { ...state.voting.ballots } : null },
       round: state.voting.round,
       candidateIds: state.voting.candidates,
       previous,
@@ -77,6 +91,14 @@ export function getGameView(state: GameState, viewerId: string): GameView {
       myBallot: viewer ? (state.voting.ballots[viewer.id] ?? null) : null,
     };
   }
+
+  const timeline: TimelineEntry[] = gameOver
+    ? state.history.map((h) => ({
+        round: h.round,
+        night: { ...h.night, deaths: deathViews(h.night.deaths) },
+        vote: h.vote ? { ...h.vote, deaths: deathViews(h.vote.deaths) } : null,
+      }))
+    : [];
 
   const winnerIds = gameOver ? state.players.filter((p) => isWinner(state, p)).map((p) => p.id) : [];
 
@@ -95,6 +117,16 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     voting,
     winner: state.winner,
     winnerIds,
+    timeline,
+  };
+}
+
+const CHANNELS: ChatChannel[] = ["public", "mafia", "graveyard"];
+
+function chatAccess(state: GameState, memberId: string): { write: ChatChannel[]; read: ChatChannel[] } {
+  return {
+    write: CHANNELS.filter((c) => canWrite(state, memberId, c)),
+    read: CHANNELS.filter((c) => canRead(state, memberId, c)),
   };
 }
 
@@ -134,6 +166,7 @@ function buildYou(state: GameState, viewer: PlayerState): YouView {
     loverIds: knowsLovers && state.lovers ? [...state.lovers] : null,
     investigations: viewer.role === "detective" ? state.investigations.map((i) => ({ ...i })) : [],
     nightAction: state.phase === "NIGHT" ? buildNightAction(state, viewer) : null,
+    chat: chatAccess(state, viewer.id),
   };
 }
 
@@ -151,6 +184,7 @@ function spectatorYou(state: GameState, spectator: SpectatorState): YouView {
     loverIds: state.phase === "GAME_OVER" && state.lovers ? [...state.lovers] : null,
     investigations: [],
     nightAction: null,
+    chat: chatAccess(state, spectator.id),
   };
 }
 

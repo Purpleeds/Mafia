@@ -43,6 +43,10 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
         if (typeof value !== "boolean") return bad("revealRoleOnDeath must be true or false.");
         next.revealRoleOnDeath = value;
         break;
+      case "showVotes":
+        if (typeof value !== "boolean") return bad("showVotes must be true or false.");
+        next.showVotes = value;
+        break;
       case "mafiaCount":
         if (value === "auto") {
           next.mafiaCount = "auto";
