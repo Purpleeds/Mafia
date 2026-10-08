@@ -32,3 +32,10 @@ async function start(): Promise<void> {
 }
 
 void start();
+
+// The service worker only serves an offline page (see public/sw.js). Not in the Vite dev server.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  });
+}

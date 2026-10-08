@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Original artwork, drawn in code: the game's night sky, moon and village. Everything important sits inside the
+       central circle (radius 40% of the size), so Android's "maskable" crops never cut it off. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2260"/>
+      <stop offset="1" stop-color="#0d1030"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <g fill="#fff2c4" opacity="0.9">
+    <circle cx="150" cy="150" r="5"/><circle cx="200" cy="112" r="3.5"/><circle cx="118" cy="214" r="3"/>
+    <circle cx="232" cy="176" r="2.5"/><circle cx="392" cy="252" r="3"/>
+  </g>
+  <path d="M352 120a72 72 0 1 1-66 101 58 58 0 0 0 66-101z" fill="#fff2c4"/>
+  <path d="M0 384Q120 334 256 356T512 340V512H0z" fill="#0a0c24"/>
+  <path d="M0 430Q160 392 300 420T512 410V512H0z" fill="#06071a"/>
+  <path d="M136 372v-76l46-38 46 38v76zM244 372V246h24v-46l24-30 24 30v46h24v126zM350 372v-68l38-30 38 30v68z" fill="#0a0c24"/>
+  <rect x="280" y="214" width="24" height="30" rx="3" fill="#ffcf6b"/>
+  <rect x="160" y="312" width="22" height="22" rx="3" fill="#ffcf6b"/>
+  <rect x="376" y="318" width="20" height="20" rx="3" fill="#ffcf6b"/>
+</svg>
