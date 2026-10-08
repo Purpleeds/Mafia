@@ -1,0 +1,18 @@
+{
+  "name": "mafia",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Online multiplayer Mafia / Werewolf party game with an automatic narrator",
+  "engines": { "node": ">=20" },
+  "workspaces": ["shared", "server", "client"],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
+    "start": "node server/dist/index.js",
+    "dev": "npm run build -w shared && concurrently -k -n shared,server,client -c gray,blue,green \"npm run dev -w shared\" \"npm run dev -w server\" \"npm run dev -w client\"",
+    "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
