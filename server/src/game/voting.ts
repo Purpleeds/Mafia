@@ -92,7 +92,8 @@ export function resolveVoting(state: GameState, env: GameEnv): boolean {
   const deaths = eliminated ? killPlayers(state, [{ playerId: eliminated, cause: "vote" }]) : [];
   state.voteReport = { ...summary, outcome, deaths };
   const entry = state.history.find((h) => h.round === state.round);
-  if (entry) entry.vote = { outcome, tally, deaths };
+  const ballots = voting.previous ? [{ ...voting.previous.ballots }, { ...voting.ballots }] : [{ ...voting.ballots }];
+  if (entry) entry.vote = { outcome, tally, deaths, ballots };
 
   const jesterOut = eliminated !== null && findPlayer(state, eliminated)?.role === "jester";
   state.pendingWinner = jesterOut ? "jester" : evaluateWinner(state);

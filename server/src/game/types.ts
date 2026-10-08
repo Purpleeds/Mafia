@@ -143,7 +143,13 @@ export interface NightLog {
 export interface RoundLog {
   round: number;
   night: NightLog;
-  vote: { outcome: VoteOutcome; tally: Record<string, number>; deaths: DeathRecord[] } | null;
+  vote: {
+    outcome: VoteOutcome;
+    tally: Record<string, number>;
+    deaths: DeathRecord[];
+    /** Every voting round's ballots (two after a revote). Server only: used for the end-of-game stats. */
+    ballots?: Record<string, string>[];
+  } | null;
 }
 
 export interface Investigation {

@@ -11,6 +11,7 @@ import type {
   YouView,
 } from "@mafia/shared";
 import { canRead, canWrite } from "./chat.js";
+import { gameStats } from "./stats.js";
 import { availableNightAction } from "./night.js";
 import { findPlayer, findSpectator, has } from "./state.js";
 import type { DeathRecord, GameState, PlayerState, SpectatorState } from "./types.js";
@@ -101,7 +102,7 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     ? state.history.map((h) => ({
         round: h.round,
         night: { ...h.night, deaths: deathViews(h.night.deaths) },
-        vote: h.vote ? { ...h.vote, deaths: deathViews(h.vote.deaths) } : null,
+        vote: h.vote ? { outcome: h.vote.outcome, tally: h.vote.tally, deaths: deathViews(h.vote.deaths) } : null,
       }))
     : [];
 
@@ -132,6 +133,7 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     winner: state.winner,
     winnerIds,
     timeline,
+    stats: gameOver ? gameStats(state) : null,
   };
 }
 

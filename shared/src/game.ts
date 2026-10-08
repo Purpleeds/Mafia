@@ -289,6 +289,23 @@ export interface TimelineNight {
   deaths: DeathView[];
 }
 
+/** End-of-game highlights, worked out by the server (only sent once the game is over). */
+export interface GameStatsView {
+  /** Who survived longest: everyone still in the game at the end. */
+  survivedLongest: { playerIds: string[] } | null;
+  /** Of the players who left the game, who held on longest (and until when). Null if nobody left. */
+  lastToLeave: { playerIds: string[]; round: number; part: "night" | "day" } | null;
+  /**
+   * The Town player who pointed at the Mafia most: votes cast against Mafia
+   * members, plus the Detective's investigations that found one.
+   */
+  bestDetective: { playerIds: string[]; entries: { playerId: string; mafiaVotes: number; mafiaFound: number }[] } | null;
+  /** The player whose votes went against innocent players most often. Null when votes were secret. */
+  mostSuspiciousVoter: { playerIds: string[]; innocentVotes: number; totalVotes: number } | null;
+  /** The host kept votes secret, so no stat reveals who voted for whom. */
+  votesSecret: boolean;
+}
+
 export interface TimelineEntry {
   round: number;
   night: TimelineNight;
@@ -369,4 +386,6 @@ export interface GameView {
   winnerIds: string[];
   /** What happened each round, including the secrets: game over only (empty before). */
   timeline: TimelineEntry[];
+  /** End-of-game highlights; null until the game is over. */
+  stats: GameStatsView | null;
 }

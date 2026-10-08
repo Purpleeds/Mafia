@@ -8,6 +8,7 @@ import { fill, isGangMember, nightOutcomeLabel, roleLabel, timelineDeath, winner
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { nameOf, type PhaseProps } from "./common";
+import { GameStats } from "./GameStats";
 import { useEffect } from "react";
 import { sounds } from "../../audio/engine";
 import { claimMoment } from "../../fx/scene";
@@ -65,6 +66,8 @@ export function GameOverScreen({ received }: PhaseProps) {
         )}
         <ErrorText error={action.error} />
       </section>
+
+      <GameStats view={view} />
 
       <section className="card" aria-labelledby="roles-title">
         <h2 id="roles-title" className="card-title">

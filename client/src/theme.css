@@ -399,3 +399,12 @@ html[data-text="larger"] { font-size: 125%; }
 .preset-text { color: var(--text-muted); font-size: 0.9rem; }
 .preset-note { color: var(--warning); font-size: 0.85rem; font-weight: 700; }
 @media (min-width: 720px) { .preset-list { grid-template-columns: repeat(3, 1fr); } }
+
+/* ------------------------------------------------------------------ end-of-game highlights */
+.stats-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.stat { display: flex; gap: 12px; align-items: flex-start; }
+.stat-icon { color: var(--accent); margin-top: 2px; }
+.stat-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.stat-title { font-size: 1rem; font-weight: 800; margin: 0; }
+.stat-text { color: var(--text-muted); }
+.stat-avatars { display: flex; gap: 4px; flex-wrap: wrap; }
