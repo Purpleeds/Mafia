@@ -57,7 +57,8 @@ export function RoleRevealScreen({ received }: PhaseProps) {
   const tag =
     mode === "normal"
       ? { color: "#c9a45a", boxShadow: "inset 0 0 0 1.5px #c9a45a" }
-      : { color: "#ffffff", background: theme.main };
+      : // Dark-on-light in the role's own colours: readable (7:1 or better) for every role.
+        { color: theme.dark, background: theme.light, boxShadow: `inset 0 0 0 1.5px ${theme.main}` };
 
   return (
     <div className="reveal stack">

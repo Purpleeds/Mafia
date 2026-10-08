@@ -194,6 +194,19 @@ export interface FxState {
 }
 
 let device: DeviceInfo | null = null;
+/** The player's own choice in the accessibility settings; null follows the device's setting. */
+let motionOverride: boolean | null = null;
+
+function deviceAsksForLessMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+
+function reducedMotionNow(): boolean {
+  return motionOverride ?? deviceAsksForLessMotion();
+}
+
 let state: FxState = initialState();
 const listeners = new Set<() => void>();
 
@@ -206,10 +219,7 @@ function initialState(): FxState {
     tier: "static",
     auto: null,
     slowedDown: false,
-    reducedMotion:
-      typeof window !== "undefined" && typeof window.matchMedia === "function"
-        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        : false,
+    reducedMotion: reducedMotionNow(),
   };
 }
 
@@ -234,7 +244,7 @@ export function initFx(): void {
   update({ auto: chooseAutoTier(device) });
   if (typeof window.matchMedia === "function") {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    query.addEventListener?.("change", () => update({ reducedMotion: query.matches }));
+    query.addEventListener?.("change", () => update({ reducedMotion: reducedMotionNow() }));
   }
 }
 
@@ -249,6 +259,17 @@ export function subscribeFxState(listener: () => void): () => void {
 
 export function useFxState(): FxState {
   return useSyncExternalStore(subscribeFxState, getFxState, getFxState);
+}
+
+/**
+ * Reduce motion on (true), off (false), or follow the device (null). With it on,
+ * the WebGL scene stops animating: it is drawn only when the phase changes, the
+ * sky jumps instead of moving, and elimination flashes are skipped.
+ */
+export function setMotionOverride(value: boolean | null): void {
+  motionOverride = value;
+  const reducedMotion = reducedMotionNow();
+  if (reducedMotion !== state.reducedMotion) update({ reducedMotion });
 }
 
 /** The player picked a setting. Picking again also forgets any automatic slow-down. */

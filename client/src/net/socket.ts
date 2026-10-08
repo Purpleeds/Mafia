@@ -9,6 +9,9 @@ import type { CallError } from "../lib/errors";
 export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 export const socket: GameSocket = io({
+  // Connect only once initConnection() has attached its listeners, or a fast "connect"
+  // could fire before anyone hears it and the app would think it's still connecting.
+  autoConnect: false,
   reconnection: true,
   reconnectionDelay: 500,
   reconnectionDelayMax: 4000,

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Icon } from "../art/icons";
+import { AccessibilitySettings } from "../components/AccessibilitySettings";
 import { FxSettings } from "../components/FxSettings";
 import { SoundButton, SoundPanel } from "../components/SoundControls";
 import { HowToPlayContent, RoleGuideContent } from "../components/RulesContent";
@@ -35,6 +36,7 @@ export function HowToPlayScreen() {
         <h2 id="display-title" className="card-title">
           Display and sound
         </h2>
+        <AccessibilitySettings idPrefix="page-a11y" />
         <FxSettings idPrefix="page-fx" />
         <SoundPanel idPrefix="page-sound" />
       </section>

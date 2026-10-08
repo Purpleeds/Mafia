@@ -123,7 +123,7 @@ h1, h2, h3,
 }
 .role-details { gap: 8px; }
 .role-details dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.role-details dt { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 800; }
+.role-details dt { font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); font-weight: 800; }
 .role-details dd { margin: 0; }
 .role-details-hidden { color: var(--text-muted); text-align: center; }
 
@@ -135,8 +135,8 @@ h1, h2, h3,
 .pcard .avatar-badge,
 .player-row .avatar-badge { transition: filter 0.9s ease, opacity 0.9s ease, transform 0.9s ease; }
 .pcard.is-out .avatar-badge { filter: grayscale(1) brightness(0.85); transform: scale(0.92); }
-.pcard.is-fading,
-.player-row.is-fading { animation: player-fade 1.8s ease both; }
+/* Only the grid's cards (disabled buttons) fade; in lists the words stay at full contrast and the picture greys out. */
+.pcard.is-fading { animation: player-fade 1.8s ease both; }
 .pcard.is-fading .avatar-badge,
 .player-row.is-fading .avatar-badge { animation: avatar-fade 1.8s ease both; }
 @keyframes player-fade { from { opacity: 1; } 40% { opacity: 1; } to { opacity: 0.55; } }
@@ -281,10 +281,11 @@ h1, h2, h3,
 .fx-settings .segmented { flex-wrap: nowrap; }
 .fx-settings .segment { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .winner-emblem .rays { animation: none; }
-  .ghost-card, .poof, .shock-ring { display: none; }
-}
+/* Reduce motion: the device's setting or the player's own choice (lib/a11y.ts sets data-motion). */
+html[data-motion="reduce"] .winner-emblem .rays { animation: none; }
+html[data-motion="reduce"] .ghost-card,
+html[data-motion="reduce"] .poof,
+html[data-motion="reduce"] .shock-ring { display: none; }
 .info-banner { justify-content: flex-start; }
 .icon-after { margin-left: 0.3em; margin-right: 0 !important; }
 .ready-badge { color: var(--success); }
@@ -336,9 +337,8 @@ h1, h2, h3,
   .top-bar-room { font-size: 0.9rem; letter-spacing: 0.06em; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .thinking-dots span { animation: none; opacity: 0.7; }
-}
+/* Reduce motion: the device's setting or the player's own choice (lib/a11y.ts sets data-motion). */
+html[data-motion="reduce"] .thinking-dots span { animation: none; opacity: 0.7; }
 
 /* ------------------------------------------------------------------ quick reactions */
 .reaction-bar { display: flex; gap: 8px; justify-content: space-between; }
@@ -378,3 +378,9 @@ h1, h2, h3,
 }
 .waking-card { max-width: 420px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .waking-title { font-size: 1.6rem; margin: 0; }
+
+/* ------------------------------------------------------------------ text size (lib/a11y.ts sets data-text) */
+html[data-text="large"] { font-size: 112.5%; }
+html[data-text="larger"] { font-size: 125%; }
+.a11y-settings .segmented { flex-wrap: nowrap; }
+.a11y-settings .segment { flex: 1 1 0; min-width: 0; padding-inline: 6px; }

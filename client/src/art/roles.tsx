@@ -11,14 +11,20 @@ export interface RoleTheme {
   accent: string;
 }
 
+/**
+ * Role colours from the Okabe–Ito palette, chosen so every pair stays clearly
+ * different for people with red-green (protan, deutan) and blue-yellow (tritan)
+ * colour blindness (see roleColors.test.ts). Colour is never the only clue: each
+ * role also has its own picture and is always named in words.
+ */
 export const ROLE_THEME: Record<Role, RoleTheme> = {
-  mafia: { main: "#c2334a", light: "#f6c4cb", dark: "#2c2632", accent: "#e8c36a" },
-  doctor: { main: "#1fa786", light: "#c4f1e3", dark: "#0d4b3d", accent: "#ffffff" },
-  detective: { main: "#d58c22", light: "#fde4b8", dark: "#5a3412", accent: "#cfe8ff" },
-  villager: { main: "#56a23a", light: "#dcf2cb", dark: "#6b3f1f", accent: "#ffd36b" },
-  jester: { main: "#8b52d9", light: "#e6d6fb", dark: "#4a2580", accent: "#f2c94c" },
-  bodyguard: { main: "#3a78cc", light: "#d3e3fb", dark: "#173864", accent: "#eef4ff" },
-  cupid: { main: "#e05286", light: "#fcd5e3", dark: "#6b1838", accent: "#ffd166" },
+  mafia: { main: "#d55e00", light: "#f3d2b8", dark: "#5c2b11", accent: "#e8c36a" },
+  doctor: { main: "#009e73", light: "#b8e4d8", dark: "#0b433d", accent: "#ffffff" },
+  detective: { main: "#e69f00", light: "#f8e4b8", dark: "#634411", accent: "#cfe8ff" },
+  villager: { main: "#56b4e9", light: "#d0eaf9", dark: "#2c4c6a", accent: "#ffd36b" },
+  jester: { main: "#f0e442", light: "#fbf7ca", dark: "#665e2a", accent: "#5b2d8c" },
+  bodyguard: { main: "#0072b2", light: "#b8d8e9", dark: "#0b3355", accent: "#eef4ff" },
+  cupid: { main: "#cc79a7", light: "#f1d9e6", dark: "#593551", accent: "#ffd166" },
 };
 
 const INK = "#1f1630";

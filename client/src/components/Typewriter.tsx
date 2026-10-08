@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return document.documentElement.dataset.motion === "reduce";
 }
 
 interface TypewriterProps {

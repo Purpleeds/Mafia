@@ -113,7 +113,7 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
 .pcard.is-out { opacity: 0.55; }
 .pcard.is-out .avatar-badge { filter: grayscale(1); }
 .pcard-name { font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pcard-caption { font-size: 0.75rem; color: var(--text-muted); }
+.pcard-caption { font-size: 0.8125rem; color: var(--text-muted); }
 .pcard-badges { position: absolute; top: 6px; right: 6px; left: 30px; display: flex; justify-content: flex-end; gap: 4px; min-height: 20px; }
 .pcard-check {
   position: absolute;
@@ -216,9 +216,8 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
 .flip-sub { font-size: 0.85rem; color: var(--text-muted); margin-top: auto; }
 .flip-team { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 10px; align-items: center; font-size: 0.95rem; }
 .flip-teammate { display: inline-flex; align-items: center; gap: 4px; }
-@media (prefers-reduced-motion: reduce) {
-  .flip-inner { transition: none; }
-}
+/* Reduce motion: the device's setting or the player's own choice (lib/a11y.ts sets data-motion). */
+html[data-motion="reduce"] .flip-inner { transition: none; }
 
 /* ------------------------------------------------------------------ night */
 :root[data-phase="NIGHT"] {
@@ -285,7 +284,7 @@ button.pcard:disabled { opacity: 0.4; cursor: not-allowed; }
   overflow-wrap: anywhere;
 }
 .chat-msg.is-mine .chat-bubble { background: var(--info-bg); border: 1px solid var(--accent); }
-.chat-name { font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+.chat-name { font-size: 0.8125rem; font-weight: 700; color: var(--text-muted); }
 .chat-form { display: flex; gap: 8px; }
 .chat-form .input { flex: 1 1 auto; min-width: 0; }
 

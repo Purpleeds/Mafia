@@ -41,7 +41,7 @@ export function FxSettings({ idPrefix }: { idPrefix: string }) {
       <p id={hintId} className="field-hint">
         {describe(fx)}
         {fx.reducedMotion && fx.tier !== "static"
-          ? " Your device asks for less motion, so the scene only changes between phases."
+          ? " Reduce motion is on, so the scene only changes between phases."
           : ""}
       </p>
     </fieldset>

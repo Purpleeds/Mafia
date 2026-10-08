@@ -24,6 +24,8 @@
   --secondary: #3fd0c9;
   --danger: #ff6b7a;
   --danger-bg: rgba(255, 107, 122, 0.14);
+  /* Danger as text: lighter, so it reads at 4.5:1 or better on every card. */
+  --danger-text: #ff9aa5;
   --success: #6ee7a8;
   --save: #5dffa3;
   --warning: #fcd34d;
@@ -232,7 +234,7 @@ select.input { appearance: auto; }
 .input-mono { font-family: var(--font-mono); letter-spacing: 0.12em; text-transform: uppercase; }
 .input-link { font-family: var(--font-mono); font-size: 0.9rem; color: var(--text-muted); }
 .field-hint { font-size: 0.875rem; color: var(--text-muted); min-height: 1.2em; }
-.field-error, .error-text { color: var(--danger); font-weight: 600; }
+.field-error, .error-text { color: var(--danger-text); font-weight: 600; }
 .error-text { font-size: 0.95rem; }
 .error-text:empty { display: block; height: 0; margin: 0; }
 
@@ -435,7 +437,7 @@ select.input { appearance: auto; }
   font-weight: 600;
   white-space: nowrap;
 }
-.tag-out { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
+.tag-out { color: var(--danger-text); border-color: var(--danger); background: var(--danger-bg); }
 .tag-role { border-color: var(--accent); }
 .tag-done { color: var(--success); border-color: var(--success); }
 .conn-online { color: var(--success); }
@@ -515,7 +517,7 @@ select.input { appearance: auto; }
   border-radius: 999px;
   background: var(--surface-2);
 }
-.countdown.is-urgent { color: var(--danger); }
+.countdown.is-urgent { color: var(--danger-text); }
 .role-card { text-align: center; align-items: center; border-color: var(--accent); }
 .role-name { font-size: 2rem; font-weight: 800; }
 .winner { font-size: 1.8rem; font-weight: 800; }
@@ -614,13 +616,14 @@ select.input { appearance: auto; }
 .spinner-large { width: 40px; height: 40px; border-width: 4px; color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+/* Reduce motion: the device's setting or the player's own choice (lib/a11y.ts sets data-motion). */
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  .spinner { animation: none; border-right-color: currentColor; opacity: 0.6; }
-}
+html[data-motion="reduce"] .spinner { animation: none; border-right-color: currentColor; opacity: 0.6; }
 .switch-label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }

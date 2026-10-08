@@ -318,6 +318,10 @@ export function initConnection(): void {
     showToast(friendlyError(payload));
   });
 
+  // Everything is listening now, so it's safe to connect (the socket is created with autoConnect off).
+  if (socket.connected) setState({ connection: "connected" });
+  else socket.connect();
+
   const wake = () => {
     if (document.visibilityState === "visible" && !socket.connected && getState().replaced === null) {
       socket.connect();
