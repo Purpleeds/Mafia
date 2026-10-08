@@ -245,14 +245,58 @@ Countdowns: `view.phaseEndsAt - serverNow` is the time left when the update was 
 If the server refuses a connection (`connect_error` with message `RATE_LIMITED`), Socket.IO stops retrying; the client waits a
 few seconds and calls `socket.connect()` again.
 
-## Render
+## Deploying to Render
 
-Single Web Service, runtime `node`:
+The game runs as one Render **Web Service** (the server also serves the built client).
 
-- Build command: `npm ci --include=dev && npm run build`
-- Start command: `npm start`
-- Health check path: `/healthz`
+| | |
+| --- | --- |
+| Service name | `Mafiascl` |
+| Workspace | William's workspace |
+| URL | https://mafiascl.onrender.com |
+| Region | Singapore (the closest region to Australia) |
+| Plan | Free |
+| Runtime | Node |
+| Repo and branch | `Purpleeds/Mafia`, branch `main` |
+| Build command | `npm ci --include=dev && npm run build` (installs everything, then builds `shared`, `server` and `client`, in that order) |
+| Start command | `npm start` (runs the compiled server, `node server/dist/index.js`) |
+| Health check | `/health` (also `/healthz`) answers `200 {"ok":true}`. Set it under *Settings > Health Check Path* |
+| Environment | `NODE_ENV=production`. `PORT` and `RENDER=true` are set by Render; nothing else is needed and there are no secrets |
 
-The server reads `PORT`. Behind Render's proxy it reads the client IP from `X-Forwarded-For` (`TRUST_PROXY_HOPS`, default 1 when
-`RENDER=true`). Rooms live in memory, so a deploy or restart ends running games. Logs are one line per event
-(`INFO room.created room=ABCD ...`).
+**How deploys work.** Auto-deploy is on: every push to `main` builds and deploys by itself (about a minute), and the old version
+keeps serving until the new one is healthy. Don't trigger deploys by hand after a push. Changing an environment variable also
+redeploys. Build logs, runtime logs and service events (crashes, restarts, out-of-memory kills, failed health checks) are in the
+Render dashboard for the service.
+
+The server reads its port from `process.env.PORT` and listens on `0.0.0.0`. Behind Render's proxy it takes the client IP from
+`X-Forwarded-For` (`TRUST_PROXY_HOPS`, default 1 when `RENDER=true`). The client connects with Socket.IO to the same origin it was
+loaded from (no hard-coded host), starts with HTTP long-polling and upgrades to WebSocket, and reconnects by itself with
+back-off. Development tools (bots, debug panel) are off in production.
+
+### Free plan: read this before a game night
+
+- **The service sleeps after about 15 minutes without visitors.** The first visit afterwards can take up to a minute to wake
+  it. The game shows a "Waking up the village…" screen while it connects. Open the site yourself a minute before everyone joins.
+- **Rooms live in memory, so any restart or redeploy ends every running game.** That includes a push to `main` (don't push
+  during a game), a crash, Render's own maintenance restarts and the service going to sleep. Players see their room has closed
+  and have to make a new one. There is no database; nothing is saved between runs.
+- The free plan has limited CPU and 512 MB of memory, plenty for a handful of rooms.
+
+## Playing as the host: the AI narrator (Puter.js)
+
+Everyone gets a narrator by default: after every night and every vote the game announces what happened with a ready-made line,
+with no setup. As the host you can let an AI write the announcements instead:
+
+1. In the lobby, switch on **Enable AI Narrator**. Your browser opens Puter's sign-in window (Puter.js, loaded only in the
+   host's browser). Sign in with a free Puter account, or create one.
+2. That's all. Puter's "User Pays" model means *your* Puter account covers the AI use; the game has no API key and the server
+   never sees your Puter login.
+3. After each night and vote, the server sends your browser only public facts (who left the game and how, whether a save was
+   announced, the round, the mode, what the Mafia are called). Your browser asks Puter's AI to write 2–3 sentences and sends the
+   text back; the server checks it and shows it to everyone with "Written by the AI narrator".
+4. If you didn't sign in, the sign-in was cancelled, Puter is unreachable, the answer is unsafe or nothing arrives within 6
+   seconds, a ready-made line is used instead, so the game never waits for long. Keep the host's tab open and in front: if the
+   host's browser is asleep, the narration falls back to the ready-made lines.
+
+The AI is never told anyone's role, so it can't give anything away, and the server rejects anything violent (in Safe Mode),
+role-revealing or longer than 400 characters. Details are in *AI narrator* above.
