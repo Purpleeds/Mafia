@@ -12,6 +12,8 @@ export function getScene(): SceneTarget {
 
 export function setScene(next: SceneTarget): void {
   if (next.mode === scene.mode && next.phase === scene.phase && next.winner === scene.winner) return;
+  // A new game (or the lobby between games) starts with a clean slate of one-off effects.
+  if (next.phase !== scene.phase && (next.phase === "LOBBY" || next.phase === "ROLE_REVEAL")) resetMoments();
   scene = next;
   for (const listener of sceneListeners) listener();
 }
@@ -22,7 +24,7 @@ export function subscribeScene(listener: () => void): () => void {
 }
 
 export function useScene(): SceneTarget {
-  return useSyncExternalStore(subscribeScene, getScene);
+  return useSyncExternalStore(subscribeScene, getScene, getScene);
 }
 
 /** One-off effects: an elimination (mode-dependent) or a Doctor's save. */
@@ -40,6 +42,13 @@ export function subscribeFx(listener: (event: FxEvent) => void): () => void {
 }
 
 const moments = new Map<string, number>();
+const emitted = new Set<string>();
+
+/** Forgets which one-off effects have played (a new game begins). */
+export function resetMoments(): void {
+  moments.clear();
+  emitted.clear();
+}
 
 /**
  * True the first time a moment (e.g. "night:3") is shown in this page, so its
@@ -55,8 +64,6 @@ export function claimMoment(key: string): boolean {
   }
   return now - first < 1000;
 }
-
-const emitted = new Set<string>();
 
 /** Emits an effect once per key. */
 export function emitFxOnce(key: string, event: FxEvent): void {

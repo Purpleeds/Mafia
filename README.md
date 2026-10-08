@@ -2,14 +2,20 @@
 
 Online multiplayer Mafia / Werewolf with an automatic narrator. TypeScript monorepo:
 
-- `shared/` – the Socket.IO event contract (`events.ts`) and game vocabulary/view types (`game.ts`), compiled to `dist/` as `@mafia/shared`
+- `shared/` – the Socket.IO event contract (`events.ts`), game vocabulary/view types (`game.ts`), the narrator's prompts and public
+  facts (`narration.ts`) and the per-mode word lists (`wordlists.ts`), compiled to `dist/` as `@mafia/shared`
 - `server/` – Node + Express + Socket.IO; also serves the built client
   - `game/` – the pure rules engine: `applyAction(state, action, { now, rng })` → new state; `getGameView(state, playerId)` → what one player may know
   - `rooms/` – `RoomService` (runs the engine per room, timers, chat, clean-up) over a `RoomStore` interface (`MemoryRoomStore` today)
+  - `narration/` – what the AI narrator may be told (`facts.ts`), the checks every narration must pass (`checks.ts`) and the
+    ready-made lines (`templates.ts`)
   - `socket/` – event handlers, payload validation, rate limiting, reconnect handling
 - `client/` – Vite + React
   - `art/` – all the artwork, drawn in code as SVG: role cards, icons, the logo and the players' characters
   - `fx/` – the animated background (raw WebGL fragment shader) and its static fallback
+  - `audio/` – all sound, generated with the Web Audio API (ambience, effects, tunes) and the volume/mute settings
+  - `narrator/` – the host's side of the AI narrator (Puter.js loader and prompts) and the optional read-aloud voice
+  - `lib/wording.ts` – every word that changes with the content mode or the Sneaky Gang name
 
 The server is the single source of truth. Each player is sent only their own view of the game (`game:state`) through a private
 Socket.IO room, so hidden information (other players' roles, night choices, detective results, Mafia chat) never reaches a browser
@@ -20,7 +26,7 @@ that shouldn't have it.
 ```bash
 npm install
 npm run dev      # server on :3000, Vite dev server on :5173 (open this one)
-npm test         # engine, room service and socket integration tests, then the client's art and effects tests
+npm test         # engine, room service, narration and socket integration tests, then the client's art, effects, wording, narrator and sound tests
 ```
 
 Production-style, on one port:
@@ -69,6 +75,74 @@ All art is original and made in code: no image files, no icon fonts, no emoji.
   drop onto player cards; eliminated players fade; the game-over roles flip in. Fonts: Fraunces (titles; rounder in Safe
   Mode via its SOFT axis) and Nunito (UI), from Google Fonts.
 
+## Content modes
+
+The host picks **Safe Mode** (the default) or **Normal Mode** in the lobby. Everyone sees the mode as a badge (a word and an icon,
+never colour alone) in the lobby and in the top bar of every in-game screen, and it can't change once the game starts: the server
+only accepts settings in the lobby. The rules are identical in both modes; only the words, the look and the sounds change.
+
+| | Safe Mode | Normal Mode |
+| --- | --- | --- |
+| Words | No weapons, death, blood or violence words anywhere. Players are *sent home*, *whisked away*, *caught by the Sneaky Gang*, *sent on a surprise holiday* | Film noir: shot in the night, found at the docks, poisoned at dinner. PG-13: no gore or graphic injury, no sexual content, no slurs, no real people |
+| The Mafia's name | "The Mafia", or "The Sneaky Gang" if the host switches that on (it renames them on every screen, in the help and in the narration) | "The Mafia" |
+| Look | Bright storybook village; an elimination is a soft puff of smoke | Dark noir village; an elimination is a red pulse |
+| Sound | Birdsong, a cartoon "poof", cheerful tunes | More wind and owls, a dramatic sting, darker tunes |
+| Chat filter | Always on: the server forces it, the host can't turn it off | On by default; the host may turn it off |
+
+- `client/src/lib/wording.ts` is the one place that decides words like "eliminated", "graveyard" and "Mafia" for the mode and the
+  Sneaky Gang name, so no screen hard-codes a violent word. `shared/src/wordlists.ts` holds the banned words per mode
+  (`SAFE_BANNED_WORDS` has every violence, weapon, death and blood word and their forms; `NORMAL_BANNED_WORDS` has gore and sexual
+  terms). They are used to check the AI's text on the server and by tests that scan every wording table, every ready-made
+  narration and the rendered help pages. Inside a game the role guide only shows the room's own wording.
+- The chat filter (`censorProfanity` in `shared/src/profanity.ts`) turns rude words into `****` on the server before a message is
+  stored or sent, so nobody receives the original, not even the sender's own screen.
+
+## AI narrator
+
+The narrator runs itself: after every night (the morning news) and every vote it announces what happened. The text is a ready-made
+line or, if the host switches it on, written by an AI through [Puter.js](https://developer.puter.com/):
+
+1. In the lobby the host flips **Enable AI Narrator**. That click opens Puter's sign-in (Puter's "User Pays" model: the host's own
+   Puter account pays for the AI, so the game needs no API key). Only the host's browser ever loads
+   `https://js.puter.com/v2/`, and only when the host sees the switch; nobody else's browser contacts Puter.
+2. When a night or a vote ends, the server sends **only public facts** to the host's private socket room (`narrator:request`):
+   the names of the players who left and how (night, vote, broken heart), whether the Doctor's save is announced, the round, the
+   mode and what the Mafia are called. Never roles, never who the Mafia, Doctor or Detective are, never ids, never anything hidden.
+   A test generates hundreds of random games and checks the facts say nothing a player couldn't already see.
+3. The host's browser calls `puter.ai.chat()` with the mode's system prompt (`shared/src/narration.ts`: 2–3 dramatic sentences,
+   names exactly as given, the mode's content rules, never reveal or guess a role, output only the narration) and answers with
+   `narrator:submit`. Player names are user input, so they go in quotes and the prompt tells the AI to treat them only as names.
+4. The server checks the text before anyone sees it (`server/src/narration/checks.ts`): at most 400 characters, no markup, it must
+   name every player who left and nobody else, no word from the mode's banned list (Safe Mode's covers all violence and weapon
+   words), no profanity, no role words (the Doctor only when a save was announced) and nothing like "X is the Mafia".
+5. While the AI writes, everyone sees "The narrator is thinking…". If the host never signed in, Puter errors, the answer fails a
+   check, or nothing arrives within 6 seconds, a ready-made line is used instead, so the game never waits long. A late answer is
+   ignored. The results screens hold while a narration is pending.
+
+The ready-made lines (`server/src/narration/templates.ts`) are 78 for Safe Mode and 76 for Normal Mode; the most common case (one
+player leaves) has 17 in each. A line is never repeated within a game. Narrations are part of the game state (`view.narration`),
+so everyone gets the same text, and it is kept in the day's recap.
+
+Optionally, a device can read the narration aloud with the browser's own speech synthesis (Sound settings; off by default; a
+friendlier voice in Safe Mode, a gravelly one in Normal Mode).
+
+## Sound
+
+All sound is generated in code with the Web Audio API (`client/src/audio`): no audio files and no libraries, so there is nothing
+to download or license and no sources to credit.
+
+- **Background**: wind and birdsong by day; low wind, crickets and the odd owl at night. It crossfades (equal power) as the sky
+  changes with the phase, and never loops audibly because the birds, crickets and owls are scheduled at random. Safe Mode has more
+  birds; Normal Mode more wind and owls.
+- **Effects**: button clicks, a vote landing, a tick for each of the last 10 seconds of a phase (firmer for the last 3), the
+  elimination (a cartoon poof in Safe Mode, a dramatic sting in Normal Mode), a warm chime for the Doctor's save, and a victory or
+  defeat tune at the end of the game, in the mode's style.
+- **Controls**: the speaker button (home, lobby and top bar) opens volume, mute, background on/off, effects on/off and read-aloud.
+  They're remembered on the device in `localStorage` (`mafia.audio`).
+- Browsers only allow sound after a tap, so nothing starts until the first tap. Sound pauses when the tab is hidden. On an iPhone
+  the silent switch also silences web audio, as with most web games.
+- `window.__mafiaAudio` shows the audio state and how many of each sound have played (handy for testing).
+
 ## Rooms and joining
 
 - Room codes are 4 uppercase letters without look-alikes (no O, I, L, 0 or 1), checked for collisions and rude words.
@@ -107,6 +181,7 @@ Your identity always comes from the session the socket joined with, never from t
 | `game:nightAction` | `{ targetId, secondTargetId? }` | Mafia/Doctor/Detective/Bodyguard/Cupid |
 | `game:vote` | `{ targetId }` | a player id or `"skip"` |
 | `chat:send` | `{ channel, text }` | `public`, `mafia` (living Mafia, at night) or `graveyard` (eliminated players and spectators) |
+| `narrator:submit` | `{ requestId, text }` | host only: the AI's narration for a `narrator:request`, or `null` if it failed |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
 
 | Server → client | Payload |
@@ -114,6 +189,7 @@ Your identity always comes from the session the socket joined with, never from t
 | `server:hello` | `{ serverNow }` on connect |
 | `game:state` | `{ version, serverNow, room: { code, hasPassword }, view }`; sent only when something you can see changed |
 | `chat:message` / `chat:history` | one message / the history you're allowed to see |
+| `narrator:request` | host only: `{ requestId, facts, timeoutMs }`, the public facts to turn into a narration (see AI narrator) |
 | `room:removed` | `{ reason: left | kicked | dropped | room_closed, message }` |
 | `session:replaced` | the same session was opened in another tab; this socket is closed |
 | `server:error` | the error for an event sent without an ack |

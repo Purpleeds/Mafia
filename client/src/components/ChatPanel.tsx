@@ -4,13 +4,14 @@ import { friendlyError } from "../lib/errors";
 import { call } from "../net/socket";
 import { useAppState } from "../state/store";
 import { ChatView } from "./ChatView";
-
-const TAB_LABEL: Partial<Record<ChatChannel, string>> = { public: "Town chat", graveyard: "Graveyard" };
+import { wordsFor } from "../lib/wording";
 
 /** Day chat (and the graveyard for eliminated players and spectators). */
 export function ChatPanel({ view }: { view: GameView }) {
   const all = useAppState((s) => s.chat);
   const you = view.you;
+  const words = wordsFor(view.settings);
+  const tabLabel: Partial<Record<ChatChannel, string>> = { public: "Town chat", graveyard: words.outChatTab };
   const readable: ChatChannel[] = (you?.chat.read ?? ["public"]).filter((c) => c !== "mafia");
   const [tab, setTab] = useState<ChatChannel>("public");
   const active: ChatChannel = readable.includes(tab) ? tab : (readable[0] ?? "public");
@@ -43,7 +44,7 @@ export function ChatPanel({ view }: { view: GameView }) {
               className={`segment${c === active ? " is-selected" : ""}`}
               onClick={() => setTab(c)}
             >
-              {TAB_LABEL[c] ?? c}
+              {tabLabel[c] ?? c}
             </button>
           ))}
         </div>
@@ -53,14 +54,14 @@ export function ChatPanel({ view }: { view: GameView }) {
         youId={you?.id ?? null}
         onSend={canWrite ? send : null}
         avatarOf={avatarOf}
-        placeholder={active === "graveyard" ? "Message the graveyard" : "Message the town"}
+        placeholder={active === "graveyard" ? words.outChatPlaceholder : "Message the town"}
         readOnlyNote={
           active === "public" && you && !you.alive
-            ? "Eliminated players can watch, but can't talk to the living. Use the Graveyard tab."
+            ? words.outChatNote
             : "You can't write in this chat right now."
         }
-        emptyText={active === "graveyard" ? "Only eliminated players and spectators see this." : "Say hello!"}
-        label={TAB_LABEL[active] ?? "Chat"}
+        emptyText={active === "graveyard" ? words.outChatEmpty : "Say hello!"}
+        label={tabLabel[active] ?? "Chat"}
       />
     </section>
   );

@@ -1,18 +1,14 @@
 import { useState } from "react";
 import { SKIP } from "@mafia/shared";
-import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
-import { Typewriter } from "../../components/Typewriter";
-import { voteNarration } from "../../lib/copy";
+import { NarratorCard } from "../../components/NarratorCard";
 import { DeathCards } from "./DeathCards";
-import { nameOf, typingSpeed, type PhaseProps } from "./common";
+import { nameOf, type PhaseProps } from "./common";
 
 export function VoteResultsScreen({ received }: PhaseProps) {
   const { view } = received.payload;
   const report = view.voteReport;
-  const text = voteNarration(view.settings.contentMode, view);
   const [done, setDone] = useState(false);
-  const [speed] = useState(() => typingSpeed(received, text.length));
 
   const rows = report
     ? Object.entries(report.tally)
@@ -24,16 +20,10 @@ export function VoteResultsScreen({ received }: PhaseProps) {
 
   return (
     <div className="stack">
-      <section className="card narrator" aria-label="The narrator">
-        <p className="eyebrow">
-          <Icon name="mic" size={15} />
-          The narrator
-        </p>
-        <Typewriter text={text} speed={speed} onDone={() => setDone(true)} />
-      </section>
+      <NarratorCard received={received} kind="vote" onDone={() => setDone(true)} />
       {done && report ? (
         <>
-          <DeathCards deaths={report.deaths} view={view} moment={`vote:${view.round}:${view.phaseEndsAt ?? ""}`} />
+          <DeathCards deaths={report.deaths} view={view} moment={`vote:${view.round}`} />
           <section className="card" aria-label="Vote counts">
             <h2 className="card-title">The vote</h2>
             <ul className="tally">

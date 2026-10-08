@@ -5,6 +5,7 @@ import type { ReceivedState } from "../state/store";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { Countdown } from "./Countdown";
 import { ModeBadge } from "./ModeBadge";
+import { SoundButton } from "./SoundControls";
 
 /** Mode badge, phase, countdown and connection status: visible on every in-game screen. */
 export function GameTopBar({ received, onHelp }: { received: ReceivedState; onHelp: () => void }) {
@@ -17,7 +18,8 @@ export function GameTopBar({ received, onHelp }: { received: ReceivedState; onHe
           {room.hasPassword ? <Icon name="lock" size={14} /> : null}
           {room.code}
         </span>
-        <ConnectionIndicator />
+        <ConnectionIndicator compact />
+        <SoundButton />
         <button type="button" className="btn btn-small top-bar-help" onClick={onHelp} aria-label="How to play and role guide">
           <Icon name="help" size={20} />
         </button>

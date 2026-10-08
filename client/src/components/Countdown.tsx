@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "../art/icons";
+import { sounds } from "../audio/engine";
 
 interface CountdownProps {
   /** Server epoch ms when the phase ends (view.phaseEndsAt). */
@@ -26,8 +27,15 @@ export function Countdown({ endsAt, serverNow, receivedAt, className }: Countdow
     return () => window.clearInterval(id);
   }, [endsAt, serverNow, receivedAt]);
 
-  if (endsAt === null) return null;
-  const seconds = Math.max(0, Math.ceil(remainingMs(endsAt, serverNow, receivedAt, now) / 1000));
+  const seconds =
+    endsAt === null ? null : Math.max(0, Math.ceil(remainingMs(endsAt, serverNow, receivedAt, now) / 1000));
+
+  // The last ten seconds tick (the sound engine decides if it may be heard).
+  useEffect(() => {
+    if (seconds !== null) sounds.tick(seconds);
+  }, [seconds]);
+
+  if (seconds === null) return null;
   const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   return (
     <span

@@ -23,6 +23,7 @@ import { call } from "../net/socket";
 import { createRoom } from "../state/controller";
 import { useAppState } from "../state/store";
 import { NoticeBanner } from "./NoticeBanner";
+import { SoundButton } from "../components/SoundControls";
 
 export function HomeScreen() {
   const notice = useAppState((s) => (s.notice && s.notice.roomCode === null ? s.notice : null));
@@ -32,6 +33,7 @@ export function HomeScreen() {
 
   return (
     <div className="screen home">
+      <SoundButton className="corner-sound" />
       <header className="home-header">
         <div className="logo">
           <Logo />

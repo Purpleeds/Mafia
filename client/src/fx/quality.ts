@@ -248,7 +248,7 @@ export function subscribeFxState(listener: () => void): () => void {
 }
 
 export function useFxState(): FxState {
-  return useSyncExternalStore(subscribeFxState, getFxState);
+  return useSyncExternalStore(subscribeFxState, getFxState, getFxState);
 }
 
 /** The player picked a setting. Picking again also forgets any automatic slow-down. */

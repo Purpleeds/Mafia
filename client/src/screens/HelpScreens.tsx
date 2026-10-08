@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon } from "../art/icons";
 import { FxSettings } from "../components/FxSettings";
+import { SoundButton, SoundPanel } from "../components/SoundControls";
 import { HowToPlayContent, RoleGuideContent } from "../components/RulesContent";
 import { HOW_TO_PLAY_PATH, ROLE_GUIDE_PATH, goHome, navigate } from "../lib/router";
 
@@ -16,6 +17,7 @@ function HelpPage({ title, other, children }: { title: string; other: { label: s
           {other.label}
           <Icon name="forward" className="icon-after" />
         </button>
+        <SoundButton />
       </div>
       <h1 className="page-title">{title}</h1>
       {children}
@@ -31,9 +33,10 @@ export function HowToPlayScreen() {
       </section>
       <section className="card" aria-labelledby="display-title">
         <h2 id="display-title" className="card-title">
-          Display
+          Display and sound
         </h2>
         <FxSettings idPrefix="page-fx" />
+        <SoundPanel idPrefix="page-sound" />
       </section>
     </HelpPage>
   );

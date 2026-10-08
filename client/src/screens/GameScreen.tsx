@@ -14,6 +14,7 @@ import { RoleRevealScreen } from "./game/RoleRevealScreen";
 import { VoteResultsScreen } from "./game/VoteResultsScreen";
 import { VotingScreen } from "./game/VotingScreen";
 import { myPlayer, nameOf } from "./game/common";
+import { wordsFor } from "../lib/wording";
 
 /** Every in-game phase: a status bar, the phase's screen, and a side column (chat and players) where it helps. */
 export function GameScreen({ received }: { received: ReceivedState }) {
@@ -80,9 +81,8 @@ export function GameScreen({ received }: { received: ReceivedState }) {
       ) : null}
       {out && view.phase !== "GAME_OVER" ? (
         <p className="info-banner" role="status">
-          <Icon name="grave" />
-          You've been eliminated. You can watch and use the graveyard chat, but you
-          can't talk to the living or vote.
+          <Icon name={wordsFor(view.settings).outIcon} />
+          {wordsFor(view.settings).outBanner}
         </p>
       ) : null}
       {you?.loverIds && view.phase !== "GAME_OVER" ? (
@@ -109,6 +109,7 @@ export function GameScreen({ received }: { received: ReceivedState }) {
                 viewerIsHost={you?.isHost === true}
                 phase={view.phase}
                 fadingIds={fadingIds}
+                wording={view.settings}
               />
             </section>
             <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={you?.isHost === true} />
@@ -117,7 +118,7 @@ export function GameScreen({ received }: { received: ReceivedState }) {
       </div>
 
       <LeaveRoomButton inGame={view.phase !== "GAME_OVER" && !watching} />
-      {helpOpen ? <HelpSheet mode={view.settings.contentMode} onClose={() => setHelpOpen(false)} /> : null}
+      {helpOpen ? <HelpSheet settings={view.settings} onClose={() => setHelpOpen(false)} /> : null}
     </div>
   );
 }

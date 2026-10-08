@@ -4,6 +4,7 @@ import { Icon } from "../art/icons";
 import { goHome } from "../lib/router";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { ModeBadge } from "./ModeBadge";
+import { SoundButton } from "./SoundControls";
 
 /** Room code (huge in the lobby), private-room lock and whatever the screen adds. */
 export function RoomHeader({
@@ -26,13 +27,14 @@ export function RoomHeader({
           <Icon name="back" size={20} />
         </button>
         <p className="eyebrow">Room code</p>
-        {hasPassword ? (
-          <span className="tag" title="Private room">
-            <Icon name="lock" size={14} />Private
-          </span>
-        ) : (
-          <span className="room-header-spacer" />
-        )}
+        <span className="room-header-end">
+          {hasPassword ? (
+            <span className="tag" title="Private room">
+              <Icon name="lock" size={14} />Private
+            </span>
+          ) : null}
+          <SoundButton />
+        </span>
       </div>
       <h1 className="room-code" aria-label={`Room code ${code.split("").join(" ")}`}>
         {code}

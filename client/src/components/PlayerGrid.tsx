@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { PublicPlayerView } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { AvatarBadge } from "./AvatarBadge";
+import { OUTSIDE_A_ROOM, roleLabel, wordsFor, type WordingSettings } from "../lib/wording";
 
 interface PlayerGridProps {
   players: PublicPlayerView[];
@@ -22,6 +23,10 @@ interface PlayerGridProps {
   hideOut?: boolean;
   /** Players who just left the game: they fade out as the card appears. */
   fadingIds?: readonly string[];
+  /** The room's mode and gang name, for the words under people who have left. */
+  wording?: WordingSettings;
+  /** Taps here don't make the generic click sound (the screen plays its own). */
+  silentClicks?: boolean;
 }
 
 /** Big, tappable player cards. The same component draws the real and the decoy night grids. */
@@ -37,10 +42,12 @@ export function PlayerGrid({
   extra,
   hideOut,
   fadingIds = [],
+  wording = OUTSIDE_A_ROOM,
+  silentClicks,
 }: PlayerGridProps) {
   const shown = players.filter((p) => !(hideOut && (!p.alive || p.kicked)));
   return (
-    <ul className="grid-cards" aria-label={label}>
+    <ul className="grid-cards" aria-label={label} data-sound={silentClicks ? "none" : undefined}>
       {shown.map((p) => {
         const out = !p.alive || p.kicked;
         const pickable = !!canPick && !out;
@@ -57,8 +64,8 @@ export function PlayerGrid({
             </span>
             {out ? (
               <span className="pcard-caption">
-                <Icon name="grave" size={13} />{" "}
-                {p.kicked ? "Removed" : p.role ? `Out · ${p.role}` : "Out"}
+                <Icon name={wordsFor(wording).outIcon} size={13} />{" "}
+                {p.kicked ? "Removed" : p.role ? `Out · ${roleLabel(p.role, wording)}` : "Out"}
               </span>
             ) : caption ? (
               <span className="pcard-caption">{caption}</span>

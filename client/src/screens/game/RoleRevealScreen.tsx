@@ -5,8 +5,8 @@ import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
 import { FlipCard } from "../../components/FlipCard";
 import { PlayerGrid } from "../../components/PlayerGrid";
-import { ROLE_LABEL } from "../../lib/labels";
-import { ROLE_INFO, TEAM_LABEL } from "../../lib/roles";
+import { ROLE_INFO } from "../../lib/roles";
+import { fill, roleLabel, teamLabel } from "../../lib/wording";
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { myPlayer, nameOf, type PhaseProps } from "./common";
@@ -43,7 +43,7 @@ export function RoleRevealScreen({ received }: PhaseProps) {
         <p className="field-hint">
           {ready}/{players.length} players ready
         </p>
-        <PlayerGrid players={view.players} youId={null} label="Players" />
+        <PlayerGrid players={view.players} youId={null} label="Players" wording={view.settings} />
       </section>
     );
   }
@@ -75,19 +75,19 @@ export function RoleRevealScreen({ received }: PhaseProps) {
         }
         back={
           <>
-            <RoleCardArt role={role} mode={mode} name={ROLE_LABEL[role]} className="flip-art" />
+            <RoleCardArt role={role} mode={mode} name={roleLabel(role, view.settings)} className="flip-art" />
             <span className="flip-caption" style={{ color: ink }}>
               <span className="flip-team-tag" style={tag}>
-                {TEAM_LABEL[info.team]}
+                {teamLabel(info.team, view.settings)}
               </span>
-              <span className="flip-summary">{info.summary[mode]}</span>
+              <span className="flip-summary">{fill(info.summary[mode], view.settings)}</span>
               <span className="flip-sub">Tap to hide</span>
             </span>
           </>
         }
       />
       <p className="sr-only" role="status">
-        {faceUp ? `Your role is ${ROLE_LABEL[role]}. ${info.summary[mode]}` : "Your role is hidden."}
+        {faceUp ? `Your role is ${roleLabel(role, view.settings)}. ${fill(info.summary[mode], view.settings)}` : "Your role is hidden."}
       </p>
 
       {faceUp ? (
@@ -95,11 +95,11 @@ export function RoleRevealScreen({ received }: PhaseProps) {
           <dl>
             <div>
               <dt>Your power</dt>
-              <dd>{info.ability[mode]}</dd>
+              <dd>{fill(info.ability[mode], view.settings)}</dd>
             </div>
             <div>
               <dt>Your goal</dt>
-              <dd>{info.goal}</dd>
+              <dd>{fill(info.goal, view.settings)}</dd>
             </div>
             {teammates.length > 0 ? (
               <div>
@@ -143,7 +143,7 @@ export function RoleRevealScreen({ received }: PhaseProps) {
         <h2 className="card-title">
           Ready: {ready}/{players.length}
         </h2>
-        <PlayerGrid players={view.players} youId={you.id} label="Players" badges={Object.fromEntries(
+        <PlayerGrid players={view.players} youId={you.id} label="Players" wording={view.settings} badges={Object.fromEntries(
             players
               .filter((p) => p.done)
               .map((p) => [

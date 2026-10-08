@@ -1,7 +1,8 @@
 import { OPTIONAL_ROLES, type GameSettings } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { MODE_INFO } from "../lib/copy";
-import { TIE_RULE_LABEL, formatSeconds } from "../lib/labels";
+import { fill, tieRuleLabel, wordsFor } from "../lib/wording";
+import { formatSeconds } from "../lib/labels";
 import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel } from "../lib/settings";
 
 /** Read-only settings for everyone who isn't the host. */
@@ -21,7 +22,7 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
           </dd>
         </div>
         <div>
-          <dt>Mafia</dt>
+          <dt>{fill("{gang}", settings)}</dt>
           <dd>{mafiaCountLabel(settings.mafiaCount, playerCount)}</dd>
         </div>
         <div>
@@ -30,11 +31,19 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
         </div>
         <div>
           <dt>Tied vote</dt>
-          <dd>{TIE_RULE_LABEL[settings.tieRule]}</dd>
+          <dd>{tieRuleLabel(settings.tieRule, settings)}</dd>
         </div>
         <div>
-          <dt>Roles on elimination</dt>
+          <dt>{wordsFor(settings).revealSummary}</dt>
           <dd>{settings.revealRoleOnDeath ? "Revealed" : "Kept secret"}</dd>
+        </div>
+        <div>
+          <dt>Chat filter</dt>
+          <dd>{settings.contentMode === "safe" ? "On (always in Safe Mode)" : settings.profanityFilter ? "On" : "Off"}</dd>
+        </div>
+        <div>
+          <dt>AI narrator</dt>
+          <dd>{settings.aiNarrator ? "On (the host's AI writes the news)" : "Off (ready-made narration)"}</dd>
         </div>
         <div>
           <dt>Doctor saves</dt>

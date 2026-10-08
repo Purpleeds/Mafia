@@ -107,7 +107,7 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
         </button>
         <LeaveRoomButton inGame={false} />
       </div>
-      {helpOpen ? <HelpSheet mode={view.settings.contentMode} onClose={() => setHelpOpen(false)} /> : null}
+      {helpOpen ? <HelpSheet settings={view.settings} onClose={() => setHelpOpen(false)} /> : null}
     </div>
   );
 }

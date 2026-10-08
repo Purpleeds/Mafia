@@ -10,6 +10,7 @@ import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { useAppState } from "../../state/store";
 import { hashText, nameOf, type PhaseProps } from "./common";
+import { wordsFor } from "../../lib/wording";
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((x) => b.includes(x));
@@ -35,9 +36,9 @@ function NightWatching({ received }: PhaseProps) {
       <section className="card center-block">
         <h2 className="card-title">The town sleeps</h2>
         <p className="field-hint">
-          {view.you?.isSpectator ? "You're watching this game." : "You've been eliminated. You can watch from here."}
+          {view.you?.isSpectator ? "You're watching this game." : wordsFor(view.settings).outBannerNight}
         </p>
-        <PlayerGrid players={view.players} youId={view.you?.id ?? null} label="Players" />
+        <PlayerGrid players={view.players} youId={view.you?.id ?? null} label="Players" wording={view.settings} />
       </section>
     </div>
   );
@@ -136,6 +137,7 @@ function NightPlay({ received }: PhaseProps) {
           youId={youId}
           label="Players to choose from"
           hideOut
+          wording={view.settings}
           canPick={(p) => validIds.has(p.id)}
           selectedIds={picked}
           onPick={pick}

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { ContentMode } from "@mafia/shared";
+import type { WordingSettings } from "../lib/wording";
 import { FxSettings } from "./FxSettings";
+import { SoundPanel } from "./SoundControls";
 import { HowToPlayContent, RoleGuideContent } from "./RulesContent";
 
 /** "How to play" and the role guide in a dialog, so you never leave the game to read them. */
-export function HelpSheet({ mode, onClose }: { mode: ContentMode; onClose: () => void }) {
+export function HelpSheet({ settings, onClose }: { settings: WordingSettings; onClose: () => void }) {
   const [tab, setTab] = useState<"how" | "roles" | "display">("how");
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -54,16 +55,19 @@ export function HelpSheet({ mode, onClose }: { mode: ContentMode; onClose: () =>
             className={`segment${tab === "display" ? " is-selected" : ""}`}
             onClick={() => setTab("display")}
           >
-            Display
+            Display and sound
           </button>
         </div>
         <div className="sheet-body">
           {tab === "how" ? (
-            <HowToPlayContent />
+            <HowToPlayContent settings={settings} />
           ) : tab === "roles" ? (
-            <RoleGuideContent initialMode={mode} />
+            <RoleGuideContent initialMode={settings.contentMode} settings={settings} lockMode />
           ) : (
-            <FxSettings idPrefix="sheet-fx" />
+            <div className="stack">
+              <FxSettings idPrefix="sheet-fx" />
+              <SoundPanel idPrefix="sheet-sound" />
+            </div>
           )}
         </div>
       </div>

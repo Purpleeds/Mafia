@@ -1,8 +1,9 @@
 import type { ConnectionStatus, Phase, PublicPlayerView, SpectatorView } from "@mafia/shared";
 import { Icon } from "../art/icons";
-import { CONNECTION_LABEL, ROLE_LABEL } from "../lib/labels";
+import { CONNECTION_LABEL } from "../lib/labels";
 import { AvatarBadge } from "./AvatarBadge";
 import { PlayerMenu } from "./PlayerMenu";
+import { OUTSIDE_A_ROOM, roleLabel, wordsFor, type WordingSettings } from "../lib/wording";
 
 function ConnectionTag({ status }: { status: ConnectionStatus }) {
   return (
@@ -21,6 +22,8 @@ interface PlayerListProps {
   phase: Phase;
   /** Players who just left the game: they fade out. */
   fadingIds?: readonly string[];
+  /** The room's mode and gang name. */
+  wording?: WordingSettings;
 }
 
 function doneLabel(phase: Phase): string | null {
@@ -29,7 +32,7 @@ function doneLabel(phase: Phase): string | null {
   return null;
 }
 
-export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = [] }: PlayerListProps) {
+export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = [], wording = OUTSIDE_A_ROOM }: PlayerListProps) {
   const inGame = phase !== "LOBBY";
   const done = doneLabel(phase);
   return (
@@ -64,12 +67,12 @@ export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = []
                     <span className="tag">Alive</span>
                   ) : (
                     <span className="tag tag-out">
-                      <Icon name="grave" size={13} />
-                      Eliminated
+                      <Icon name={wordsFor(wording).outIcon} size={13} />
+                      {wordsFor(wording).outTag}
                     </span>
                   )
                 ) : null}
-                {p.role ? <span className="tag tag-role">{ROLE_LABEL[p.role]}</span> : null}
+                {p.role ? <span className="tag tag-role">{roleLabel(p.role, wording)}</span> : null}
                 {done && p.done && p.alive && !p.kicked ? (
                   <span className="tag tag-done">
                     <Icon name="check" size={13} />

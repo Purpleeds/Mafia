@@ -18,6 +18,7 @@ import { call } from "../net/socket";
 import { joinRoom } from "../state/controller";
 import { useAppState } from "../state/store";
 import { NoticeBanner } from "./NoticeBanner";
+import { SoundButton } from "../components/SoundControls";
 
 type PeekState =
   | { status: "loading" }
@@ -86,6 +87,7 @@ function BackHome() {
         <Icon name="back" />
         Home
       </button>
+      <SoundButton />
     </nav>
   );
 }

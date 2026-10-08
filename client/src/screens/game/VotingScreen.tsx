@@ -7,6 +7,7 @@ import { PlayerGrid } from "../../components/PlayerGrid";
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { myPlayer, nameOf, type PhaseProps } from "./common";
+import { sounds } from "../../audio/engine";
 
 /** A player's vote count. Keyed by the count, so each new vote lands with a little bounce. */
 function VoteBadge({ count, voters }: { count: number; voters: { id: string; name: string; avatar: Avatar }[] }) {
@@ -53,7 +54,9 @@ export function VotingScreen({ received }: PhaseProps) {
 
   const vote = (targetId: string) => {
     if (voting.myBallot === targetId) return;
-    void action.run(() => call("game:vote", { targetId }));
+    void action.run(() => call("game:vote", { targetId })).then((result) => {
+      if (result.ok) sounds.vote();
+    });
   };
 
   const electorate = view.players.filter((p) => p.alive && !p.kicked && p.connected);
@@ -106,6 +109,8 @@ export function VotingScreen({ received }: PhaseProps) {
           players={view.players}
           youId={view.you?.id ?? null}
           label="Vote for a player"
+          silentClicks
+          wording={view.settings}
           hideOut
           canPick={canVote ? (p) => valid.has(p.id) && !action.pending : undefined}
           selectedIds={voting.myBallot ? [voting.myBallot] : []}

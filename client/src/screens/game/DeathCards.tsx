@@ -1,10 +1,10 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import type { ContentMode, DeathView, GameView } from "@mafia/shared";
-import { Icon, type IconName } from "../../art/icons";
+import type { DeathView, GameView } from "@mafia/shared";
+import { Icon } from "../../art/icons";
 import { RoleIcon } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { claimMoment, emitFxOnce } from "../../fx/scene";
-import { ROLE_LABEL } from "../../lib/labels";
+import { deathCause, fill, roleLabel } from "../../lib/wording";
 import { nameOf } from "./common";
 
 /** Smoke puffs around the avatar: direction, size and start time. */
@@ -17,13 +17,6 @@ const PUFFS = [
   { dx: -8, dy: 8, size: 72, delay: 0.28 },
   { dx: 96, dy: -8, size: 40, delay: 0.5 },
 ] as const;
-
-function causeOf(death: DeathView, mode: ContentMode): { icon: IconName; text: string } {
-  const safe = mode === "safe";
-  if (death.cause === "heartbreak") return { icon: "brokenHeart", text: safe ? "Went home with a broken heart" : "Died of a broken heart" };
-  if (death.cause === "vote") return { icon: "ballot", text: safe ? "Sent home by the town" : "Voted out" };
-  return { icon: "moon", text: safe ? "Sent home by the Mafia" : "Killed in the night" };
-}
 
 interface DeathCardsProps {
   deaths: DeathView[];
@@ -47,11 +40,11 @@ export function DeathCards({ deaths, view, moment }: DeathCardsProps) {
 
   if (deaths.length === 0) return null;
   return (
-    <ul className="death-list" aria-label="Who was eliminated">
+    <ul className="death-list" aria-label="Who left the game">
       {deaths.map((death, index) => {
         const player = view.players.find((p) => p.id === death.playerId);
         const name = nameOf(view, death.playerId);
-        const cause = causeOf(death, mode);
+        const cause = deathCause(death.cause, view.settings);
         const poof = fresh && mode === "safe";
         const struck = fresh && mode === "normal";
         const delay = { animationDelay: `${index * 0.3}s` } satisfies CSSProperties;
@@ -66,7 +59,7 @@ export function DeathCards({ deaths, view, moment }: DeathCardsProps) {
                   {death.role ? (
                     <>
                       {" · "}
-                      <RoleIcon role={death.role} size={16} /> {ROLE_LABEL[death.role]}
+                      <RoleIcon role={death.role} size={16} /> {roleLabel(death.role, view.settings)}
                     </>
                   ) : null}
                 </p>
@@ -128,7 +121,7 @@ export function SaveNotice({ view, moment }: { view: GameView; moment: string })
           <p className="field-hint">
             {mode === "safe"
               ? "Someone was in trouble last night, but the Doctor got there first."
-              : "The Mafia struck, but the Doctor's patient lived to see the morning."}
+              : fill("{TheGang} struck, but the Doctor's patient lived to see the morning.", view.settings)}
           </p>
         </div>
       </div>

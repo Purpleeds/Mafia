@@ -4,20 +4,23 @@ import { Icon } from "../../art/icons";
 import { RoleIcon, WinnerEmblem } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
-import { NIGHT_OUTCOME_LABEL, ROLE_LABEL, WINNER_LABEL } from "../../lib/labels";
+import { fill, isGangMember, nightOutcomeLabel, roleLabel, timelineDeath, winnerLabel, wordsFor } from "../../lib/wording";
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { nameOf, type PhaseProps } from "./common";
+import { useEffect } from "react";
+import { sounds } from "../../audio/engine";
+import { claimMoment } from "../../fx/scene";
 
 const WINNER_LINE = {
   safe: {
-    town: "The town found every Mafia member. Hooray!",
-    mafia: "The Mafia took over the town!",
+    town: "The town found every {gang} member. Hooray!",
+    mafia: "{TheGang} took over the town!",
     jester: "The Jester tricked everyone!",
   },
   normal: {
-    town: "The last Mafia member is gone. The town is safe… for now.",
-    mafia: "The Mafia now own this town.",
+    town: "The last {gang} member is gone. The town is safe… for now.",
+    mafia: "{TheGang} now own this town.",
     jester: "The Jester fooled the whole town into voting them out.",
   },
 } as const;
@@ -29,6 +32,13 @@ export function GameOverScreen({ received }: PhaseProps) {
   const winner = view.winner;
   const mode = view.settings.contentMode;
   const winners = new Set(view.winnerIds);
+  const youId = view.you?.id ?? null;
+  // A fanfare for the winners, a sad tune for everyone else. Spectators get the fanfare.
+  useEffect(() => {
+    if (!claimMoment("end")) return;
+    const won = view.you?.isSpectator === true || (youId !== null && view.winnerIds.includes(youId));
+    sounds.ending(won, mode);
+  }, [youId, mode, view.winnerIds, view.you?.isSpectator]);
   const players = [...view.players].sort((a, b) => Number(winners.has(b.id)) - Number(winners.has(a.id)));
 
   return (
@@ -36,9 +46,9 @@ export function GameOverScreen({ received }: PhaseProps) {
       <section className="card card-highlight center-block winner-card" aria-labelledby="winner-title">
         {winner ? <WinnerEmblem winner={winner} size={132} /> : <Icon name="flag" size={72} />}
         <h2 id="winner-title" className="winner">
-          {winner ? WINNER_LABEL[winner] : "Game over"}
+          {winner ? winnerLabel(winner, view.settings) : "Game over"}
         </h2>
-        {winner ? <p className="card-lead">{WINNER_LINE[mode][winner]}</p> : null}
+        {winner ? <p className="card-lead">{fill(WINNER_LINE[mode][winner], view.settings)}</p> : null}
         {isHost ? (
           <button
             type="button"
@@ -80,10 +90,12 @@ export function GameOverScreen({ received }: PhaseProps) {
                   {p.role ? (
                     <span className="tag tag-role flip-in" style={{ "--i": index } as CSSProperties}>
                       <RoleIcon role={p.role} size={18} />
-                      {ROLE_LABEL[p.role]}
+                      {roleLabel(p.role, view.settings)}
                     </span>
                   ) : null}
-                  <span className={`tag${p.alive ? "" : " tag-out"}`}>{p.kicked ? "Removed" : p.alive ? "Survived" : "Eliminated"}</span>
+                  <span className={`tag${p.alive ? "" : " tag-out"}`}>
+                    {p.kicked ? "Removed" : p.alive ? "Survived" : wordsFor(view.settings).outTag}
+                  </span>
                 </div>
               </div>
             </li>
@@ -102,11 +114,8 @@ export function GameOverScreen({ received }: PhaseProps) {
 }
 
 function deathText(view: GameView, d: TimelineEntry["night"]["deaths"][number]): string {
-  const who = nameOf(view, d.playerId);
-  const role = d.role ? ` (${ROLE_LABEL[d.role]})` : "";
-  if (d.cause === "heartbreak") return `${who}${role} died of a broken heart.`;
-  if (d.cause === "vote") return `${who}${role} was voted out.`;
-  return `${who}${role} was eliminated by the Mafia.`;
+  const role = d.role ? ` (${roleLabel(d.role, view.settings)})` : "";
+  return timelineDeath(nameOf(view, d.playerId), role, d.cause, view.settings);
 }
 
 export function Timeline({ view }: { view: GameView }) {
@@ -138,8 +147,8 @@ export function Timeline({ view }: { view: GameView }) {
                   <RoleIcon role="mafia" size={18} />
                   <span>
                     {n.mafiaTargetId
-                      ? `The Mafia went after ${name(n.mafiaTargetId)}. ${NIGHT_OUTCOME_LABEL[n.outcome]}`
-                      : NIGHT_OUTCOME_LABEL.no_attack}
+                      ? `${fill(wordsFor(view.settings).wentAfter, view.settings)} ${name(n.mafiaTargetId)}. ${nightOutcomeLabel(n.outcome, view.settings)}`
+                      : nightOutcomeLabel("no_attack", view.settings)}
                   </span>
                 </li>
                 {n.protectedId ? (
@@ -159,7 +168,7 @@ export function Timeline({ view }: { view: GameView }) {
                     <RoleIcon role="detective" size={18} />
                     <span>
                       The Detective checked {name(n.investigation.targetId)}:{" "}
-                      {n.investigation.isMafia ? "Mafia" : "not Mafia"}.
+                      {isGangMember(n.investigation.isMafia, view.settings)}.
                     </span>
                   </li>
                 ) : null}

@@ -36,8 +36,12 @@ export const DEFAULT_RATE_LIMITS: RateLimitConfig = {
   chat: { capacity: 5, refillPerSecond: 1 },
   /** Votes, night actions, role acknowledgements, per player. */
   gameAction: { capacity: 10, refillPerSecond: 2 },
-  /** Settings, start, restart, kick, leave, profile changes, per player. */
-  hostAction: { capacity: 10, refillPerSecond: 1 },
+  /**
+   * Settings, start, restart, kick, leave, profile changes, per player. A host
+   * who sets every timer, a few switches and then starts the game makes a dozen
+   * of these in a row, so the burst has to be wider than that.
+   */
+  hostAction: { capacity: 30, refillPerSecond: 2 },
   timeSync: { capacity: 10, refillPerSecond: 0.5 },
   /** Every incoming event, per connection: a cap on raw flooding. */
   anyEvent: { capacity: 40, refillPerSecond: 10 },

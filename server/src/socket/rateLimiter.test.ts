@@ -29,6 +29,16 @@ describe("RateLimiter", () => {
     expect(limiter.consume("a", "gameAction")).toBe(true);
   });
 
+  it("lets a host configure a whole game and start it in one go", () => {
+    // Six timers, the mode, a few switches, the role list, then Start: a dozen quick changes.
+    const limiter = new RateLimiter(DEFAULT_RATE_LIMITS, () => 0);
+    const burst = Array.from({ length: 15 }, () => limiter.consume("host", "hostAction"));
+    expect(burst.every(Boolean)).toBe(true);
+    // ...while a flood of them is still stopped.
+    const flood = Array.from({ length: 40 }, () => limiter.consume("host", "hostAction"));
+    expect(flood.some((ok) => !ok)).toBe(true);
+  });
+
   it("forgets and prunes owners", () => {
     let now = 0;
     const limiter = new RateLimiter(DEFAULT_RATE_LIMITS, () => now);

@@ -5,24 +5,21 @@ import {
   TIE_RULES,
   maxMafiaCount,
   validateRoomPassword,
-  type ContentMode,
   type GameSettings,
   type OptionalRole,
   type SettingsPatch,
   type TimerSettings,
 } from "@mafia/shared";
-import { Icon, type IconName } from "../art/icons";
+import { Icon } from "../art/icons";
 import { RoleIcon } from "../art/roles";
-import { TIE_RULE_LABEL, formatSeconds } from "../lib/labels";
+import { MODE_INFO } from "../lib/copy";
+import { formatSeconds } from "../lib/labels";
 import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel, timerOptions } from "../lib/settings";
+import { fill, tieRuleLabel, wordsFor } from "../lib/wording";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import { ErrorText } from "./ErrorText";
-
-const MODE_INFO: Record<ContentMode, { label: string; icon: IconName; description: string }> = {
-  safe: { label: "Safe", icon: "sun", description: "Family-friendly and cartoony. Nobody gets hurt, they just go home." },
-  normal: { label: "Normal", icon: "moon", description: "Classic crime drama with darker narration." },
-};
+import { NarratorSetting } from "./NarratorSetting";
 
 function rolePatch(role: OptionalRole, on: boolean): Partial<Record<OptionalRole, boolean>> {
   const patch: Partial<Record<OptionalRole, boolean>> = {};
@@ -46,6 +43,8 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
   const action = useAction();
   const send = (patch: SettingsPatch) => void action.run(() => call("host:updateSettings", patch));
 
+  const words = wordsFor(settings);
+  const safe = settings.contentMode === "safe";
   const maxMafia = maxMafiaCount(playerCount);
   const mafiaChoices: number[] = [];
   for (let n = 1; n <= maxMafia; n++) mafiaChoices.push(n);
@@ -71,15 +70,33 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
                 onClick={() => settings.contentMode !== mode && send({ contentMode: mode })}
               >
                 <Icon name={MODE_INFO[mode].icon} size={26} className="segment-icon" />
-                <span>{MODE_INFO[mode].label}</span>
+                <span>{MODE_INFO[mode].shortLabel}</span>
               </button>
             ))}
           </div>
           <p className="field-hint">{MODE_INFO[settings.contentMode].description}</p>
+          <p className="field-hint">The mode is shown to everyone, and can't change once the game starts.</p>
         </fieldset>
 
+        {safe ? (
+          <label htmlFor="setting-sneaky" className="switch-row">
+            <span className="switch-text">
+              <span>Call the Mafia "The Sneaky Gang"</span>
+              <span className="field-hint">A friendlier name for younger players.</span>
+            </span>
+            <input
+              id="setting-sneaky"
+              type="checkbox"
+              role="switch"
+              className="switch"
+              checked={settings.sneakyGang}
+              onChange={(e) => send({ sneakyGang: e.target.checked })}
+            />
+          </label>
+        ) : null}
+
         <div className="field">
-          <label htmlFor="setting-mafia">Mafia players</label>
+          <label htmlFor="setting-mafia">{fill("{gang} players", settings)}</label>
           <select
             id="setting-mafia"
             className="input"
@@ -138,7 +155,7 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
                 aria-pressed={settings.tieRule === rule}
                 onClick={() => settings.tieRule !== rule && send({ tieRule: rule })}
               >
-                {TIE_RULE_LABEL[rule]}
+                {tieRuleLabel(rule, settings)}
               </button>
             ))}
           </div>
@@ -146,8 +163,8 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
 
         <label htmlFor="setting-reveal" className="switch-row">
           <span className="switch-text">
-            <span>Reveal roles on elimination</span>
-            <span className="field-hint">Everyone sees an eliminated player's role.</span>
+            <span>{words.revealLabel}</span>
+            <span className="field-hint">{words.revealHint}</span>
           </span>
           <input
             id="setting-reveal"
@@ -188,6 +205,28 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
             onChange={(e) => send({ showVotes: e.target.checked })}
           />
         </label>
+
+        <label htmlFor="setting-filter" className="switch-row">
+          <span className="switch-text">
+            <span>Chat language filter</span>
+            <span className="field-hint">
+              {safe
+                ? "Always on in Safe Mode. Rude words in chat are hidden."
+                : "Hides rude words in chat. On by default; you can turn it off in Normal Mode."}
+            </span>
+          </span>
+          <input
+            id="setting-filter"
+            type="checkbox"
+            role="switch"
+            className="switch"
+            checked={safe || settings.profanityFilter}
+            disabled={safe}
+            onChange={(e) => send({ profanityFilter: e.target.checked })}
+          />
+        </label>
+
+        <NarratorSetting enabled={settings.aiNarrator} />
 
         <details className="advanced">
           <summary>Timers</summary>

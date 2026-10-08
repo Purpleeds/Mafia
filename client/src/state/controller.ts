@@ -10,6 +10,7 @@ import type {
   SessionInfo,
 } from "@mafia/shared";
 import { friendlyError } from "../lib/errors";
+import { handleNarratorRequest } from "../narrator/host";
 import { goHome, goToRoom, parseRoute } from "../lib/router";
 import { forgetSession, loadSession, saveProfile, saveSession } from "../lib/storage";
 import { call, socket, type CallResult } from "../net/socket";
@@ -298,6 +299,11 @@ export function initConnection(): void {
   });
 
   socket.on("room:removed", onRemoved);
+
+  // Only the host's browser is ever asked: write the narration with Puter's AI and send it back.
+  socket.on("narrator:request", (request) => {
+    void handleNarratorRequest(request).catch(() => undefined);
+  });
 
   socket.on("session:replaced", (payload) => {
     window.clearTimeout(manualReconnectTimer);
