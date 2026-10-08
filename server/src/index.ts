@@ -1,50 +1,40 @@
-import { createServer } from "node:http";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import express from "express";
-import { Server } from "socket.io";
-import type { ClientToServerEvents, ServerToClientEvents } from "@mafia/shared";
+import { createMafiaServer } from "./app.js";
+import { createConsoleLogger } from "./logger.js";
 
-const PORT = Number(process.env.PORT) || 3000;
+const logger = createConsoleLogger();
+const port = Number(process.env.PORT) || 3000;
 const here = path.dirname(fileURLToPath(import.meta.url));
-// server/dist/index.js -> client/dist
-const clientDist = path.resolve(here, "../../client/dist");
 
-const app = express();
-app.disable("x-powered-by");
+// Render puts one proxy in front of the service (and sets RENDER=true).
+const trustProxyHops = process.env.TRUST_PROXY_HOPS
+  ? Number(process.env.TRUST_PROXY_HOPS)
+  : process.env.RENDER === "true"
+    ? 1
+    : 0;
 
-app.get("/healthz", (_req, res) => {
-  res.json({ ok: true });
+const server = createMafiaServer({
+  // server/dist/index.js -> client/dist
+  clientDist: path.resolve(here, "../../client/dist"),
+  logger,
+  trustProxyHops,
 });
 
-if (existsSync(clientDist)) {
-  app.use(express.static(clientDist));
-  // SPA fallback for anything that isn't a file or a socket route.
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
-} else {
-  console.warn(`Client build not found at ${clientDist}. Run "npm run build" (or use "npm run dev").`);
+server.httpServer.listen(port, "0.0.0.0", () => {
+  logger.info("server.listening", { port, node: process.version, trustProxyHops });
+});
+
+process.on("unhandledRejection", (reason) => logger.error("process.unhandled_rejection", {}, reason));
+process.on("uncaughtException", (err) => logger.error("process.uncaught_exception", {}, err));
+
+let shuttingDown = false;
+function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info("server.shutdown", { signal });
+  void server.close().then(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5_000).unref();
 }
-
-const httpServer = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer);
-
-io.on("connection", (socket) => {
-  socket.emit("hello", { message: "Hello from the server!", serverTime: new Date().toISOString() });
-  socket.on("ping", (ack) => {
-    if (typeof ack === "function") ack(new Date().toISOString());
-  });
-});
-
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Mafia server listening on port ${PORT}`);
-});
-
-function shutdown() {
-  io.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 5000).unref();
-}
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
