@@ -56,9 +56,12 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
   const app = express();
   app.disable("x-powered-by");
   if (trustProxyHops > 0) app.set("trust proxy", trustProxyHops);
-  app.get("/healthz", (_req, res) => {
+  // Render's health check (and anything else that wants to know the server is up).
+  const health = (_req: express.Request, res: express.Response) => {
     res.json({ ok: true });
-  });
+  };
+  app.get("/health", health);
+  app.get("/healthz", health);
   const dev = options.devTools === true;
   // The client asks this once at start-up to know whether to show its dev tools.
   app.get("/dev-config", (_req, res) => {

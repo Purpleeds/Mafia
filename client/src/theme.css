@@ -369,3 +369,12 @@ h1, h2, h3,
 .json-number, .json-boolean { color: #e8c36a; }
 .json-null, .json-summary { color: var(--muted, #8a8fb0); }
 .json-node > summary { cursor: pointer; }
+
+/* ------------------------------------------------------------------ waking up (free hosting) */
+.waking-screen {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: color-mix(in srgb, var(--bg, #141a45) 82%, transparent);
+}
+.waking-card { max-width: 420px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.waking-title { font-size: 1.6rem; margin: 0; }

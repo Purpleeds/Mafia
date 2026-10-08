@@ -150,6 +150,14 @@ async function lobbyOf(n: number): Promise<TestClient[]> {
 }
 
 describe("over real sockets", () => {
+  it("answers the health checks", async () => {
+    for (const path of ["/health", "/healthz"]) {
+      const response = await fetch(`${url}${path}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+    }
+  });
+
   it("greets new connections with the server time", async () => {
     const c = client();
     const hello = await new Promise<{ serverNow: number }>((resolve) => c.socket.once("server:hello", resolve));

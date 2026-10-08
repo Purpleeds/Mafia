@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ContentMode, Phase, Winner } from "@mafia/shared";
+import { WakingScreen } from "./components/WakingScreen";
 import { DebugPanel } from "./components/DevTools";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { ReplacedOverlay } from "./components/ReplacedOverlay";
@@ -52,6 +53,7 @@ export function App() {
           <HomeScreen />
         )}
       </main>
+      <WakingScreen />
       <DebugPanel />
       <Toasts />
       <ReplacedOverlay />
