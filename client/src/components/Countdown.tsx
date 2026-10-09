@@ -5,6 +5,8 @@ import { sounds } from "../audio/engine";
 interface CountdownProps {
   /** Server epoch ms when the phase ends (view.phaseEndsAt). */
   endsAt: number | null;
+  /** While the host has paused the game: the time left, frozen. */
+  pausedMs?: number | null;
   /** Server clock when the state was sent (payload.serverNow). */
   serverNow: number;
   /** performance.now() when the state arrived. */
@@ -17,7 +19,7 @@ export function remainingMs(endsAt: number, serverNow: number, receivedAt: numbe
   return endsAt - serverNow - Math.max(0, now - receivedAt);
 }
 
-export function Countdown({ endsAt, serverNow, receivedAt, className }: CountdownProps) {
+export function Countdown({ endsAt, pausedMs = null, serverNow, receivedAt, className }: CountdownProps) {
   const [now, setNow] = useState(() => performance.now());
 
   useEffect(() => {
@@ -35,6 +37,15 @@ export function Countdown({ endsAt, serverNow, receivedAt, className }: Countdow
     if (seconds !== null) sounds.tick(seconds);
   }, [seconds]);
 
+  if (pausedMs !== null) {
+    const frozen = Math.max(0, Math.ceil(pausedMs / 1000));
+    return (
+      <span className={`countdown is-paused${className ? ` ${className}` : ""}`} role="timer" aria-label={`Paused, ${frozen} seconds left`}>
+        <Icon name="pause" size={16} className="countdown-icon" />
+        Paused {Math.floor(frozen / 60)}:{String(frozen % 60).padStart(2, "0")}
+      </span>
+    );
+  }
   if (seconds === null) return null;
   const text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   return (

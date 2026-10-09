@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { MAX_PLAYERS, MIN_PLAYERS } from "@mafia/shared";
+import { MAX_PLAYERS, MIN_PLAYERS, effectiveChatFilter, type GameView } from "@mafia/shared";
 import { Icon } from "../art/icons";
+import { UncensoredNotice } from "../components/ChatNotices";
 import { ErrorText } from "../components/ErrorText";
+import { AvatarRequests } from "../components/PhotoControls";
+import { PhaseHint } from "../components/PhaseHint";
 import { HelpSheet } from "../components/HelpSheet";
 import { InviteCard } from "../components/InviteCard";
 import { LeaveRoomButton } from "../components/LeaveRoomButton";
@@ -11,6 +14,7 @@ import { RoomHeader } from "../components/RoomHeader";
 import { DevBotsCard } from "../components/DevTools";
 import { PasswordEditor, SettingsEditor } from "../components/SettingsEditor";
 import { SettingsSummary } from "../components/SettingsSummary";
+import { haptic } from "../lib/haptics";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import type { ReceivedState } from "../state/store";
@@ -43,6 +47,8 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
           The room is full, so you're watching. You'll get a seat when one frees up.
         </p>
       ) : null}
+      {effectiveChatFilter(view.settings) === "uncensored" ? <UncensoredNotice lobby /> : null}
+      <PhaseHint id="lobby" />
 
       <div className="lobby-grid">
         <div className="lobby-col">
@@ -66,8 +72,14 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
           </Block>
 
           <Block order={2}>
-            <StartPanel isHost={isHost} connectedCount={connectedCount} hostName={host?.name ?? null} />
+            <StartPanel view={view} isHost={isHost} connectedCount={connectedCount} hostName={host?.name ?? null} />
           </Block>
+
+          {isHost ? (
+            <Block order={2}>
+              <AvatarRequests view={view} />
+            </Block>
+          ) : null}
 
           <Block order={4}>
             <SpectatorList spectators={view.spectators} youId={you?.id ?? null} viewerIsHost={isHost} />
@@ -79,6 +91,7 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
                 key={`${you.name}|${you.avatar.color}|${you.avatar.seed}`}
                 name={you.name}
                 avatar={you.avatar}
+                view={view}
               />
             ) : null}
           </Block>
@@ -114,21 +127,53 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
   );
 }
 
+/** Ready to play: everyone but the host taps Ready; the host's Start button lights up once they all have. */
 function StartPanel({
+  view,
   isHost,
   connectedCount,
   hostName,
 }: {
+  view: GameView;
   isHost: boolean;
   connectedCount: number;
   hostName: string | null;
 }) {
   const action = useAction();
+  const me = view.players.find((p) => p.id === view.you?.id) ?? null;
+  const others = view.players.filter((p) => p.connected && p.id !== view.hostId);
+  const readyCount = others.filter((p) => p.done).length;
+  const allReady = others.length > 0 && readyCount === others.length;
+  const readyLine = others.length === 0 ? "" : `${readyCount} of ${others.length} players ready.`;
+
   if (!isHost) {
+    if (!me) {
+      return (
+        <section className="card center-block" role="status">
+          <p className="card-lead">Waiting for {hostName ? `${hostName} (the host)` : "the host"} to start</p>
+        </section>
+      );
+    }
     return (
-      <section className="card center-block" role="status">
-        <span className="spinner" aria-hidden="true" />
-        <p className="card-lead">Waiting for {hostName ? `${hostName} (the host)` : "the host"} to start</p>
+      <section className="card center-block">
+        <button
+          type="button"
+          className={`btn btn-block btn-large${me.done ? " btn-ready-on" : " btn-primary"}`}
+          aria-pressed={me.done}
+          disabled={action.pending}
+          onClick={() =>
+            void action.run(() => call("player:setReady", { ready: !me.done })).then((r) => {
+              if (r.ok) haptic("tap");
+            })
+          }
+        >
+          <Icon name={me.done ? "check" : "ready"} />
+          {me.done ? "You're ready (tap to undo)" : "I'm ready"}
+        </button>
+        <p className="field-hint center-text" role="status">
+          {readyLine} {hostName ? `${hostName} (the host)` : "The host"} starts the game.
+        </p>
+        <ErrorText error={action.error} />
       </section>
     );
   }
@@ -136,19 +181,20 @@ function StartPanel({
     connectedCount < MIN_PLAYERS
       ? `Needs at least ${MIN_PLAYERS} connected players (${connectedCount} now).`
       : null;
+  const glow = reason === null && allReady;
   return (
-    <section className="card">
+    <section className={`card${glow ? " card-ready" : ""}`}>
       <button
         type="button"
-        className="btn btn-primary btn-block btn-large"
+        className={`btn btn-primary btn-block btn-large${glow ? " is-everyone-ready" : ""}`}
         disabled={reason !== null || action.pending}
         aria-describedby="start-reason"
         onClick={() => void action.run(() => call("host:start", {}))}
       >
-        {action.pending ? "Starting…" : "Start game"}
+        {action.pending ? "Starting…" : glow ? "Everyone's ready: Start game" : "Start game"}
       </button>
-      <p id="start-reason" className="field-hint center-text">
-        {reason ?? "Everyone's here? Start when you're ready."}
+      <p id="start-reason" className="field-hint center-text" role="status">
+        {reason ?? (glow ? "Everyone has tapped Ready." : `${readyLine} You can start without waiting.`)}
       </p>
       <ErrorText error={action.error} />
     </section>

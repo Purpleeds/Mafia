@@ -27,7 +27,7 @@ interface PlayerListProps {
 }
 
 function doneLabel(phase: Phase): string | null {
-  if (phase === "ROLE_REVEAL") return "Ready";
+  if (phase === "LOBBY" || phase === "ROLE_REVEAL") return "Ready";
   if (phase === "VOTING") return "Voted";
   return null;
 }
@@ -81,8 +81,14 @@ export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = []
                 ) : null}
               </div>
             </div>
-            {viewerIsHost && !isYou && !p.kicked ? (
-              <PlayerMenu playerId={p.id} name={p.name} canMakeHost={p.connected} />
+            {!isYou && !p.kicked && youId !== null ? (
+              <PlayerMenu
+                playerId={p.id}
+                name={p.name}
+                viewerIsHost={viewerIsHost}
+                canMakeHost={p.connected}
+                hasPhoto={!!p.avatar.photo}
+              />
             ) : null}
           </li>
         );
@@ -120,7 +126,9 @@ export function SpectatorList({ spectators, youId, viewerIsHost }: SpectatorList
                   <span className="tag">Spectator</span>
                 </div>
               </div>
-              {viewerIsHost && !isYou ? <PlayerMenu playerId={s.id} name={s.name} canMakeHost={false} /> : null}
+              {!isYou && youId !== null ? (
+                <PlayerMenu playerId={s.id} name={s.name} viewerIsHost={viewerIsHost} canMakeHost={false} hasPhoto={!!s.avatar.photo} />
+              ) : null}
             </li>
           );
         })}

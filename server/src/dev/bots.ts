@@ -174,6 +174,17 @@ export class BotManager {
     // Doing the phase's job comes first (a bot that is "done" has nothing left to do).
     if (this.rng() < this.actChance) {
       switch (state.phase) {
+        case "LOBBY":
+          // Bots are always ready, so the host's Start button lights up once the people are.
+          if (!me.done) await this.service.act(code, { type: "SET_READY", playerId: id, ready: true });
+          return;
+        case "DAY_DISCUSSION":
+          // Bots are happy to stop talking: the discussion ends early once the people are done too.
+          if (me.alive && view.discussion && !view.discussion.youAreDone && this.rng() < 0.3) {
+            await this.service.act(code, { type: "SKIP_DISCUSSION", playerId: id, skip: true });
+            return;
+          }
+          break;
         case "ROLE_REVEAL":
           if (!me.done) await this.service.act(code, { type: "ACK_ROLE", playerId: id });
           return;

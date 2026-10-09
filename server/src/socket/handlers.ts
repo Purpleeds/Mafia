@@ -17,8 +17,12 @@ import type { RateCategory, RateLimiter } from "./rateLimiter.js";
 import { playerRoom, type MafiaServer, type MafiaSocket } from "./types.js";
 import {
   parseChat,
+  parseCheckSeat,
   parseFillBots,
   parseReaction,
+  parseReviewAvatar,
+  parseSetReady,
+  parseSkipDiscussion,
   parseCreateRoom,
   parseEmpty,
   parseJoinRoom,
@@ -303,6 +307,7 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
         const result = await service.createRoom(p.name, p.avatar, {
           customCode: p.customCode,
           password: p.password,
+          settings: p.settings,
           ownerKey: digest(`owner:${socket.data.ip}`),
         });
         if (!result.ok) return result;
@@ -312,6 +317,10 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
     );
 
     on("room:peek", { category: "joinRoom", perIp: true, parse: parsePeekRoom }, (p) => service.peek(p.roomCode));
+
+    on("room:checkSeat", { category: "resume", perIp: true, parse: parseCheckSeat }, (p) =>
+      service.checkSeat(p.roomCode, p.sessionToken),
+    );
 
     on("room:join", { category: "joinRoom", perIp: true, parse: parseJoinRoom }, (p) =>
       serially(async () => {
@@ -346,6 +355,14 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       act((s) => ({ type: "UPDATE_PROFILE", playerId: s.playerId, name: p.name, avatar: p.avatar })),
     );
 
+    on("player:setReady", { category: "gameAction", parse: parseSetReady }, (p) =>
+      act((s) => ({ type: "SET_READY", playerId: s.playerId, ready: p.ready })),
+    );
+
+    on("player:removeAvatar", { category: "hostAction", parse: parseEmpty }, () =>
+      withSession((s) => service.removeAvatar(s.roomCode, s.playerId, s.playerId)),
+    );
+
     // ---------------------------------------------------------------- host controls
 
     on("host:updateSettings", { category: "hostAction", parse: parseSettingsPatch }, (settings) =>
@@ -372,6 +389,21 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       withSession((s) => service.setPassword(s.roomCode, s.playerId, p.password)),
     );
 
+    on("host:reviewAvatar", { category: "hostAction", parse: parseReviewAvatar }, (p) =>
+      withSession((s) => service.reviewAvatar(s.roomCode, s.playerId, p.playerId, p.approve)),
+    );
+
+    on("host:removeAvatar", { category: "hostAction", parse: parseTargetPlayer }, (p) =>
+      withSession((s) => service.removeAvatar(s.roomCode, s.playerId, p.playerId)),
+    );
+
+    on("host:pause", { category: "hostAction", parse: parseEmpty }, () => act((s) => ({ type: "PAUSE", playerId: s.playerId })));
+    on("host:resume", { category: "hostAction", parse: parseEmpty }, () => act((s) => ({ type: "RESUME", playerId: s.playerId })));
+    on("host:addTime", { category: "hostAction", parse: parseEmpty }, () => act((s) => ({ type: "ADD_TIME", playerId: s.playerId })));
+    on("host:skipToVoting", { category: "hostAction", parse: parseEmpty }, () =>
+      act((s) => ({ type: "SKIP_TO_VOTING", playerId: s.playerId })),
+    );
+
     // ---------------------------------------------------------------- playing
 
     on("game:ackRole", { category: "gameAction", parse: parseEmpty }, () =>
@@ -391,9 +423,13 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       act((s) => ({ type: "CAST_VOTE", playerId: s.playerId, targetId: p.targetId })),
     );
 
+    on("game:skipDiscussion", { category: "gameAction", parse: parseSkipDiscussion }, (p) =>
+      act((s) => ({ type: "SKIP_DISCUSSION", playerId: s.playerId, skip: p.skip })),
+    );
+
     on("chat:send", { category: "chat", parse: parseChat }, (p) =>
       withSession((s) => service.sendChat(s.roomCode, s.playerId, p.text)),
-    )
+    );
     on("chat:react", { category: "chat", parse: parseReaction }, (p) =>
       withSession((s) => service.sendReaction(s.roomCode, s.playerId, p.reaction)),
     );

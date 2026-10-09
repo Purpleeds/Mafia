@@ -28,6 +28,10 @@ export function createLobby(settings: GameSettings = defaultSettings()): GameSta
     winner: null,
     narration: null,
     usedTemplates: [],
+    gameNumber: 0,
+    paused: null,
+    discussionDone: [],
+    log: [],
   };
 }
 
@@ -70,10 +74,14 @@ export function resetGameData(state: GameState): void {
   state.narration = null;
   state.usedTemplates = [];
   state.phaseEndsAt = null;
+  state.paused = null;
+  state.discussionDone = [];
+  state.log = [];
   for (const p of state.players) {
     p.role = null;
     p.alive = true;
     p.ackedRole = false;
     p.kicked = false;
+    p.ready = false;
   }
 }

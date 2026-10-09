@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import {
+  AVATAR_POLICIES,
+  CHAT_FILTERS,
   OPTIONAL_ROLES,
   ROOM_PASSWORD_MAX_LENGTH,
   TIE_RULES,
@@ -14,7 +16,16 @@ import { Icon } from "../art/icons";
 import { RoleIcon } from "../art/roles";
 import { MODE_INFO } from "../lib/copy";
 import { formatSeconds } from "../lib/labels";
-import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel, timerOptions } from "../lib/settings";
+import {
+  AVATAR_POLICY_INFO,
+  CHAT_FILTER_INFO,
+  OPTIONAL_ROLE_INFO,
+  TIMER_KEYS,
+  TIMER_LABEL,
+  mafiaCountLabel,
+  timerOptions,
+} from "../lib/settings";
+import { UncensoredNotice } from "./ChatNotices";
 import { fill, tieRuleLabel, wordsFor } from "../lib/wording";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
@@ -209,25 +220,53 @@ export function SettingsEditor({ settings, playerCount }: SettingsEditorProps) {
           />
         </label>
 
-        <label htmlFor="setting-filter" className="switch-row">
-          <span className="switch-text">
-            <span>Chat language filter</span>
-            <span className="field-hint">
-              {safe
-                ? "Always on in Safe Mode. Rude words in chat are hidden."
-                : "Hides rude words in chat. On by default; you can turn it off in Normal Mode."}
-            </span>
-          </span>
-          <input
-            id="setting-filter"
-            type="checkbox"
-            role="switch"
-            className="switch"
-            checked={safe || settings.profanityFilter}
-            disabled={safe}
-            onChange={(e) => send({ profanityFilter: e.target.checked })}
-          />
-        </label>
+        {safe ? (
+          <div className="field">
+            <span className="field-label">Chat filter</span>
+            <p className="field-hint">Strict, always, in Safe Mode: swearing, slurs and rude words are hidden.</p>
+          </div>
+        ) : (
+          <fieldset className="field" aria-describedby="setting-filter-hint">
+            <legend>Chat filter</legend>
+            <div className="segmented">
+              {CHAT_FILTERS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`segment${settings.chatFilter === level ? " is-selected" : ""}`}
+                  aria-pressed={settings.chatFilter === level}
+                  onClick={() => settings.chatFilter !== level && send({ chatFilter: level })}
+                >
+                  {CHAT_FILTER_INFO[level].label}
+                </button>
+              ))}
+            </div>
+            <p id="setting-filter-hint" className="field-hint">
+              {CHAT_FILTER_INFO[settings.chatFilter].description} Links are always blocked.
+            </p>
+            {settings.chatFilter === "uncensored" ? <UncensoredNotice lobby /> : null}
+          </fieldset>
+        )}
+
+        <fieldset className="field" aria-describedby="setting-avatars-hint">
+          <legend>Players' own pictures</legend>
+          <div className="segmented">
+            {AVATAR_POLICIES.map((policy) => (
+              <button
+                key={policy}
+                type="button"
+                className={`segment${settings.customAvatars === policy ? " is-selected" : ""}`}
+                aria-pressed={settings.customAvatars === policy}
+                onClick={() => settings.customAvatars !== policy && send({ customAvatars: policy })}
+              >
+                {AVATAR_POLICY_INFO[policy].label}
+              </button>
+            ))}
+          </div>
+          <p id="setting-avatars-hint" className="field-hint">
+            {AVATAR_POLICY_INFO[settings.customAvatars].description} You can remove anyone's picture at any time.
+          </p>
+        </fieldset>
 
         <NarratorSetting enabled={settings.aiNarrator} />
 

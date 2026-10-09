@@ -1,9 +1,11 @@
 import type {
+  AvatarImagesPayload,
   ChatHistoryPayload,
   ChatMessage,
   GameStatePayload,
   NarratorRequestPayload,
   RemovedPayload,
+  RoomNoticePayload,
 } from "@mafia/shared";
 import type { Broadcaster } from "../rooms/roomService.js";
 import { playerRoom, type MafiaServer } from "./types.js";
@@ -27,6 +29,15 @@ export class SocketBroadcaster implements Broadcaster {
   /** Only the host's private room gets this; nobody else is ever sent the facts. */
   narrationRequest(roomCode: string, playerId: string, payload: NarratorRequestPayload): void {
     this.io.to(playerRoom(roomCode, playerId)).emit("narrator:request", payload);
+  }
+
+  /** Pictures go only to members of the room, through their private Socket.IO room. */
+  avatarImages(roomCode: string, playerId: string, payload: AvatarImagesPayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("avatar:images", payload);
+  }
+
+  notice(roomCode: string, playerId: string, payload: RoomNoticePayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("room:notice", payload);
   }
 
   removed(roomCode: string, playerId: string, payload: RemovedPayload): void {

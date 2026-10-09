@@ -43,6 +43,7 @@ describe("live vote counts", () => {
     const g = gameWithRoles(R7, { settings: { showVotes: false, tieRule: "revote" } });
     g.advanceTo("VOTING");
     for (const [v, t] of Object.entries({ p1: "p4", p2: "p4", p3: "p4", p4: "p5", p6: "p5", p7: "p5", p5: SKIP })) g.vote(v, t);
+    g.endPhase();
     const previous = getGameView(g.state, "p1").voting?.previous;
     expect(previous?.tally).toEqual({ p4: 3, p5: 3, skip: 1 });
     expect(previous?.ballots).toEqual({});

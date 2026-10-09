@@ -1,0 +1,208 @@
+/* Custom pictures, chat filter notices, ready, host controls, notes, the log and hints. */
+
+/* ------------------------------------------------------------------ avatar pictures */
+.avatar-badge.has-photo { background: var(--surface-2); }
+.avatar-photo { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+.photo-field { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.photo-field legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.photo-row { display: flex; align-items: center; gap: 12px; }
+.photo-use { flex: 1 1 auto; min-width: 0; }
+.photo-controls { margin-top: 10px; }
+.photo-controls .btn .avatar-badge { margin-right: 0.35em; }
+
+.photo-sheet { max-width: 420px; }
+.photo-crop { align-items: center; }
+.crop-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-small);
+  background: #000;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.crop-viewport:active { cursor: grabbing; }
+.crop-image { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; }
+/* Everything outside the circle is dimmed: only the circle shows as the avatar. */
+.crop-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.55);
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -2px;
+  pointer-events: none;
+}
+.crop-zoom { width: 100%; }
+.crop-zoom label { display: inline-flex; align-items: center; gap: 6px; }
+
+.request-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.request-row { display: grid; grid-template-columns: 72px 1fr; grid-template-areas: "photo name" "photo actions"; gap: 4px 12px; align-items: center; }
+.request-photo { grid-area: photo; width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--surface-2); }
+.request-loading { display: flex; align-items: center; justify-content: center; }
+.request-name { grid-area: name; font-weight: 800; }
+.request-row .button-row { grid-area: actions; }
+
+/* ------------------------------------------------------------------ chat */
+.uncensored-notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid color-mix(in srgb, var(--warning) 60%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.uncensored-notice .icon { color: var(--warning); margin-top: 0.15em; }
+.chat-name-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 0;
+}
+.chat-msg-actions { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.chat-msg.is-reaction .chat-reaction {
+  align-self: flex-start;
+  padding: 1px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.chat-muted { display: flex; flex-direction: column; gap: 6px; }
+.reaction-btn { font-size: 0.9rem; padding-inline: 6px; }
+.switch-row-compact { min-height: 0; padding: 0; font-size: 0.875rem; color: var(--text-muted); }
+.switch-row-compact .switch { transform: scale(0.85); transform-origin: right center; }
+
+/* ------------------------------------------------------------------ lobby */
+.field-label { font-weight: 700; }
+.btn-ready-on { border-color: var(--success); color: var(--success); }
+.card-ready { border-color: var(--success); }
+.btn.is-everyone-ready { box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 70%, transparent), 0 8px 22px color-mix(in srgb, var(--success) 30%, transparent); }
+html[data-motion="full"] .btn.is-everyone-ready { animation: ready-pulse 2s ease-in-out infinite; }
+@keyframes ready-pulse { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--success) 35%, transparent), 0 8px 22px color-mix(in srgb, var(--success) 20%, transparent); } }
+
+.player-menu-panel .field-hint { margin: 6px 0 0; }
+
+/* ------------------------------------------------------------------ collapsible cards (log, notes, private) */
+details.card { display: block; }
+details.card > summary {
+  cursor: pointer;
+  font-weight: 700;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  list-style: none;
+}
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary::after { content: "+"; margin-left: auto; font-weight: 800; color: var(--text-muted); }
+details.card[open] > summary::after { content: "−"; }
+details.card > summary .field-hint { font-weight: 500; margin: 0; }
+
+.event-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.event-list li { display: flex; gap: 8px; align-items: flex-start; line-height: 1.4; }
+.event-list .icon { margin-top: 0.2em; color: var(--text-muted); }
+
+.private-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.private-role { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+.private-team { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0; }
+
+/* ------------------------------------------------------------------ notes */
+.notes-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.note-row { display: flex; flex-direction: column; gap: 6px; }
+.note-row.is-out { opacity: 0.6; }
+.note-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note-name { font-weight: 700; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.note-tag {
+  min-height: 32px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.note-tag.is-selected { background: var(--surface-3); border-color: var(--text); }
+/* The tag word always shows, so colour is never the only signal. */
+.note-tag-suspect.is-selected, .pcard-note.note-tag-suspect { border-color: var(--danger-text); color: var(--danger-text); }
+.note-tag-trust.is-selected, .pcard-note.note-tag-trust { border-color: var(--success); color: var(--success); }
+.note-tag-unsure.is-selected, .pcard-note.note-tag-unsure { border-color: var(--warning); color: var(--warning); }
+.input-small { min-height: 36px; padding: 6px 10px; font-size: 0.9rem; }
+.pcard-note { font-size: 0.75rem; font-weight: 800; padding: 0 8px; border-radius: 999px; border: 1px solid; }
+
+/* ------------------------------------------------------------------ keyboard shortcuts (computers only) */
+.pcard-key {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: none;
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+  color: var(--text-muted);
+  font: 700 0.75rem/18px var(--font-mono);
+  text-align: center;
+}
+.keyboard-hint { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .pcard-key { display: block; }
+  .keyboard-hint { display: block; }
+}
+
+/* ------------------------------------------------------------------ voting */
+.my-vote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-small);
+  border: 1px dashed var(--border);
+  font-size: 1rem;
+}
+.my-vote.has-vote { border-style: solid; border-color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.my-vote.has-vote > .icon { color: var(--success); }
+.last-call .icon { color: var(--warning); }
+.countdown.is-paused { color: var(--warning); }
+
+/* ------------------------------------------------------------------ host controls */
+.host-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.host-controls-label { font-size: 0.8125rem; font-weight: 700; color: var(--text-muted); margin-right: 2px; }
+
+/* ------------------------------------------------------------------ tips */
+.hint {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.hint-icon { color: var(--accent); margin-top: 2px; }
+.hint-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hint-title { margin: 0; font-weight: 800; }
+.hint-text { margin: 0; color: var(--text-muted); line-height: 1.45; }
+.hint-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ------------------------------------------------------------------ misc */
+.personal-settings { display: flex; flex-direction: column; gap: 4px; }
+.rejoin .card-lead { margin: 0; }
+.done-talking .btn { justify-content: center; }

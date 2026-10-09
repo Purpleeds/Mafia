@@ -1,12 +1,9 @@
-import type { ChatReaction } from "@mafia/shared";
-import type { IconName } from "../art/icons";
+import { CHAT_REACTIONS, CHAT_REACTION_TEXT, type ChatReaction } from "@mafia/shared";
 
-/** The quick reactions: how they look and how a screen reader says them. */
-export const REACTIONS: { id: ChatReaction; label: string; icon: IconName }[] = [
-  { id: "thinking", label: "Thinking", icon: "thinking" },
-  { id: "suspicious", label: "Suspicious", icon: "suspicious" },
-  { id: "laughing", label: "Laughing", icon: "laughing" },
-  { id: "shocked", label: "Shocked", icon: "shocked" },
-];
+/** The quick reactions: short words on small buttons, no pictures. */
+export const REACTIONS: { id: ChatReaction; label: string }[] = CHAT_REACTIONS.map((id) => ({ id, label: CHAT_REACTION_TEXT[id] }));
 
-export const reactionInfo = (id: ChatReaction) => REACTIONS.find((r) => r.id === id) ?? REACTIONS[0]!;
+/** The words for a reaction. A reaction from an older version of the game reads as a plain "Reacted". */
+export function reactionLabel(id: string): string {
+  return (CHAT_REACTIONS as readonly string[]).includes(id) ? CHAT_REACTION_TEXT[id as ChatReaction] : "Reacted";
+}

@@ -1,4 +1,4 @@
-import { NARRATION_TIMEOUT_MS, SKIP, defaultSettings, isChatFiltered, gangName } from "@mafia/shared";
+import { NARRATION_TIMEOUT_MS, SKIP, defaultSettings, effectiveChatFilter, gangName } from "@mafia/shared";
 import { describe, expect, it } from "vitest";
 import { findBannedWord } from "@mafia/shared";
 import { nextWake } from "./narrate.js";
@@ -257,25 +257,46 @@ describe("content modes", () => {
     expect(g.state.settings.contentMode).toBe("normal");
   });
 
-  it("always filters chat in Safe Mode; Normal Mode lets the host choose (on by default)", () => {
+  it("always filters chat strictly in Safe Mode; Normal Mode lets the host choose (standard by default)", () => {
     const g = lobby(5);
-    expect(defaultSettings()).toMatchObject({ profanityFilter: true, sneakyGang: false, aiNarrator: false });
-    expect(isChatFiltered(g.state.settings)).toBe(true);
-    // the host can't turn it off in Safe Mode...
-    expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { profanityFilter: false } })).toBe("INVALID_SETTINGS");
-    expect(
-      g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "safe", profanityFilter: false } }),
-    ).toBe("INVALID_SETTINGS");
-    expect(g.state.settings.profanityFilter).toBe(true);
-    // ...but can in Normal Mode, in one patch or two
-    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "normal", profanityFilter: false } });
-    expect(g.state.settings.profanityFilter).toBe(false);
-    expect(isChatFiltered(g.state.settings)).toBe(false);
-    // going back to Safe Mode switches the filter back on, for good measure
+    expect(defaultSettings()).toMatchObject({ chatFilter: "strict", customAvatars: "approval", sneakyGang: false, aiNarrator: false });
+    expect(effectiveChatFilter(g.state.settings)).toBe("strict");
+    // the host can't loosen it in Safe Mode, in any combination...
+    for (const chatFilter of ["standard", "uncensored"] as const) {
+      expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { chatFilter } }), chatFilter).toBe("INVALID_SETTINGS");
+      expect(
+        g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "safe", chatFilter } }),
+        chatFilter,
+      ).toBe("INVALID_SETTINGS");
+    }
+    expect(g.state.settings.chatFilter).toBe("strict");
+    // ...Normal Mode starts on standard, and the host may pick any level, in one patch or two
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "normal" } });
+    expect(g.state.settings).toMatchObject({ chatFilter: "standard", customAvatars: "on" });
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { chatFilter: "uncensored" } });
+    expect(effectiveChatFilter(g.state.settings)).toBe("uncensored");
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { chatFilter: "strict" } });
+    expect(effectiveChatFilter(g.state.settings)).toBe("strict");
+    // going back to Safe Mode makes it strict again, for good
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { chatFilter: "uncensored" } });
     g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "safe" } });
-    expect(g.state.settings.profanityFilter).toBe(true);
-    expect(isChatFiltered(g.state.settings)).toBe(true);
-    expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { profanityFilter: "no" } })).toBe("INVALID_SETTINGS");
+    expect(g.state.settings).toMatchObject({ chatFilter: "strict", customAvatars: "approval" });
+    // one patch that switches to Normal Mode and Uncensored at once is fine
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "normal", chatFilter: "uncensored" } });
+    expect(g.state.settings.chatFilter).toBe("uncensored");
+    for (const bad of ["no", true, "UNCENSORED", null]) {
+      expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { chatFilter: bad } })).toBe("INVALID_SETTINGS");
+    }
+    expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { profanityFilter: false } })).toBe("INVALID_SETTINGS");
+  });
+
+  it("keeps the host's picture setting when it is set in the same change as the mode", () => {
+    const g = lobby(5);
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { contentMode: "normal", customAvatars: "off" } });
+    expect(g.state.settings.customAvatars).toBe("off");
+    g.ok({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { customAvatars: "approval" } });
+    expect(g.state.settings.customAvatars).toBe("approval");
+    expect(g.fail({ type: "UPDATE_SETTINGS", playerId: "p1", settings: { customAvatars: "maybe" } })).toBe("INVALID_SETTINGS");
   });
 
   it("renames the Mafia in Safe Mode only", () => {

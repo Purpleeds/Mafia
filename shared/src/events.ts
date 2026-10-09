@@ -30,7 +30,11 @@ export type TransportErrorCode =
   | "PASSWORD_REQUIRED"
   | "WRONG_PASSWORD"
   | "SERVER_BUSY"
-  | "SERVER_ERROR";
+  | "SERVER_ERROR"
+  | "CHAT_LINK"
+  | "AVATAR_INVALID"
+  | "AVATAR_TOO_LARGE"
+  | "AVATARS_OFF";
 
 export type ErrorCode = GameErrorCode | TransportErrorCode;
 
@@ -53,6 +57,11 @@ export interface CreateRoomPayload {
   customCode?: string;
   /** Makes the room private. */
   password?: string;
+  /**
+   * The host's last-used settings, to start the room with. Checked like any
+   * settings change; if they aren't valid the room starts with the defaults.
+   */
+  settings?: SettingsPatch;
 }
 
 export interface PeekRoomPayload {
@@ -105,6 +114,35 @@ export interface TargetPlayerPayload {
   playerId: string;
 }
 
+/** Lobby: ready (or not) to play. */
+export interface SetReadyPayload {
+  ready: boolean;
+}
+
+/** Host: let a waiting picture show, or turn it down. */
+export interface ReviewAvatarPayload {
+  playerId: string;
+  approve: boolean;
+}
+
+/** Day discussion: done talking (vote to skip to voting), or not after all. */
+export interface SkipDiscussionPayload {
+  skip: boolean;
+}
+
+/** The home screen asks whether your last room still runs and still has your seat. */
+export interface CheckSeatPayload {
+  roomCode: string;
+  sessionToken: string;
+}
+
+export interface CheckSeatResult {
+  roomCode: string;
+  stage: RoomPreview["stage"];
+  /** Your saved seat is still yours (it hasn't expired or been removed). */
+  seatValid: boolean;
+}
+
 export interface SetPasswordPayload {
   /** null removes the password. */
   password: string | null;
@@ -129,9 +167,17 @@ export interface ChatSendPayload {
   text: string;
 }
 
-/** The quick reactions for players who don't want to type. */
-export const CHAT_REACTIONS = ["thinking", "suspicious", "laughing", "shocked"] as const;
+/** The quick reactions for players who don't want to type: short words, shown as small text buttons. */
+export const CHAT_REACTIONS = ["sus", "agree", "no_way", "hmm"] as const;
 export type ChatReaction = (typeof CHAT_REACTIONS)[number];
+
+/** How each quick reaction reads in the chat. */
+export const CHAT_REACTION_TEXT: Record<ChatReaction, string> = {
+  sus: "Sus",
+  agree: "Agree",
+  no_way: "No way",
+  hmm: "Hmm",
+};
 
 export interface ChatReactPayload {
   reaction: ChatReaction;
@@ -227,6 +273,39 @@ export interface ChatHistoryPayload {
   messages: ChatMessage[];
 }
 
+/**
+ * Pictures for the avatars you may see, as data URLs the server encoded itself
+ * (always image/webp). Sent once per picture; ids appear in AvatarView.photo,
+ * YouView.photo and GameView.avatarRequests.
+ */
+export interface AvatarImagesPayload {
+  images: { id: string; dataUrl: string }[];
+}
+
+/**
+ * Something about the people in the room worth a short message: someone
+ * joined, left, was removed, lost their connection or came back, or the host
+ * changed. The avatar notices go only to the player concerned.
+ */
+export type RoomNoticeKind =
+  | "joined"
+  | "left"
+  | "kicked"
+  | "dropped"
+  | "disconnected"
+  | "reconnected"
+  | "host_changed"
+  | "avatar_approved"
+  | "avatar_rejected"
+  | "avatar_removed";
+
+export interface RoomNoticePayload {
+  kind: RoomNoticeKind;
+  /** Who it is about. */
+  playerId: string;
+  name: string;
+}
+
 export type RemovedReason = "left" | "kicked" | "dropped" | "room_closed";
 
 export interface RemovedPayload {
@@ -257,7 +336,10 @@ export interface ClientToServerEvents {
   "room:join": (payload: JoinRoomPayload, ack: Ack<SessionInfo>) => void;
   "room:resume": (payload: ResumeSessionPayload, ack: Ack<SessionInfo>) => void;
   "room:leave": (payload: EmptyPayload, ack: Ack) => void;
+  "room:checkSeat": (payload: CheckSeatPayload, ack: Ack<CheckSeatResult>) => void;
   "player:updateProfile": (payload: UpdateProfilePayload, ack: Ack) => void;
+  "player:setReady": (payload: SetReadyPayload, ack: Ack) => void;
+  "player:removeAvatar": (payload: EmptyPayload, ack: Ack) => void;
   // host controls
   "host:updateSettings": (payload: SettingsPatch, ack: Ack) => void;
   "host:start": (payload: EmptyPayload, ack: Ack) => void;
@@ -265,10 +347,17 @@ export interface ClientToServerEvents {
   "host:kick": (payload: TargetPlayerPayload, ack: Ack) => void;
   "host:transfer": (payload: TargetPlayerPayload, ack: Ack) => void;
   "host:setPassword": (payload: SetPasswordPayload, ack: Ack) => void;
+  "host:reviewAvatar": (payload: ReviewAvatarPayload, ack: Ack) => void;
+  "host:removeAvatar": (payload: TargetPlayerPayload, ack: Ack) => void;
+  "host:pause": (payload: EmptyPayload, ack: Ack) => void;
+  "host:resume": (payload: EmptyPayload, ack: Ack) => void;
+  "host:addTime": (payload: EmptyPayload, ack: Ack) => void;
+  "host:skipToVoting": (payload: EmptyPayload, ack: Ack) => void;
   // playing
   "game:ackRole": (payload: EmptyPayload, ack: Ack) => void;
   "game:nightAction": (payload: NightActionPayload, ack: Ack) => void;
   "game:vote": (payload: VotePayload, ack: Ack) => void;
+  "game:skipDiscussion": (payload: SkipDiscussionPayload, ack: Ack) => void;
   "chat:send": (payload: ChatSendPayload, ack: Ack) => void;
   "chat:react": (payload: ChatReactPayload, ack: Ack) => void;
   "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
@@ -284,6 +373,8 @@ export interface ServerToClientEvents {
   "game:state": (payload: GameStatePayload) => void;
   "chat:message": (payload: ChatMessage) => void;
   "chat:history": (payload: ChatHistoryPayload) => void;
+  "avatar:images": (payload: AvatarImagesPayload) => void;
+  "room:notice": (payload: RoomNoticePayload) => void;
   /** You are no longer in the room (left, dropped from the lobby, or the room closed). */
   "room:removed": (payload: RemovedPayload) => void;
   /** The same session was opened elsewhere (e.g. another tab); this socket is closed. */
@@ -303,16 +394,26 @@ export const CLIENT_EVENTS = [
   "room:join",
   "room:resume",
   "room:leave",
+  "room:checkSeat",
   "player:updateProfile",
+  "player:setReady",
+  "player:removeAvatar",
   "host:updateSettings",
   "host:start",
   "host:restart",
   "host:kick",
   "host:transfer",
   "host:setPassword",
+  "host:reviewAvatar",
+  "host:removeAvatar",
+  "host:pause",
+  "host:resume",
+  "host:addTime",
+  "host:skipToVoting",
   "game:ackRole",
   "game:nightAction",
   "game:vote",
+  "game:skipDiscussion",
   "chat:send",
   "chat:react",
   "narrator:submit",

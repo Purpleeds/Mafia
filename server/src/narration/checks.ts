@@ -1,4 +1,4 @@
-import { NARRATION_MAX_LENGTH, containsProfanity, findBannedWord, type ContentMode } from "@mafia/shared";
+import { NARRATION_MAX_LENGTH, containsProfanity, findBannedWord, stripEmoji, type ContentMode } from "@mafia/shared";
 
 export type NarrationRejection =
   | "empty"
@@ -45,13 +45,14 @@ function maskNames(text: string, names: readonly string[], mask: string): string
   return out;
 }
 
-/** Tidies what the AI returned: one line, no emoji, no wrapping quotation marks. */
+/** Tidies what the AI returned: one line, no emoji or text faces, no wrapping quotation marks. */
 export function tidyNarration(raw: string): string {
-  let text = raw
-    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, " ")
-    .replace(/[\p{Extended_Pictographic}\ufe0f]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  let text = stripEmoji(
+    raw
+      .replace(/\u200d/g, "")
+      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, " ")
+      .replace(/\s+/g, " "),
+  );
   const wrapped = /^["“”'‘’](.*)["“”'‘’]$/u.exec(text);
   if (wrapped && !/["“”]/.test(wrapped[1] ?? "")) text = (wrapped[1] ?? "").trim();
   return text;

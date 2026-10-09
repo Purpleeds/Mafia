@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ChatChannel, ChatReaction, GameView } from "@mafia/shared";
+import { effectiveChatFilter, type ChatChannel, type ChatReaction, type GameView } from "@mafia/shared";
 import { friendlyError } from "../lib/errors";
 import { call } from "../net/socket";
 import { useAppState } from "../state/store";
@@ -7,7 +7,7 @@ import { ChatView } from "./ChatView";
 import { wordsFor } from "../lib/wording";
 
 /** Day chat (and the graveyard for eliminated players and spectators). */
-export function ChatPanel({ view }: { view: GameView }) {
+export function ChatPanel({ view, roomCode }: { view: GameView; roomCode: string }) {
   const all = useAppState((s) => s.chat);
   const you = view.you;
   const words = wordsFor(view.settings);
@@ -57,6 +57,8 @@ export function ChatPanel({ view }: { view: GameView }) {
       <ChatView
         messages={messages}
         youId={you?.id ?? null}
+        roomCode={roomCode}
+        uncensored={effectiveChatFilter(view.settings) === "uncensored"}
         onSend={canWrite ? send : null}
         onReact={canWrite ? react : null}
         avatarOf={avatarOf}

@@ -21,9 +21,9 @@ describe("spectators", () => {
     expect(g.fail({ type: "NIGHT_ACTION", playerId: "late", targetId: "p4" })).toBe("SPECTATOR");
     g.advanceTo("VOTING");
     expect(g.fail({ type: "CAST_VOTE", playerId: "late", targetId: SKIP })).toBe("SPECTATOR");
-    // and they don't hold up the vote
+    // and they don't hold up the vote: once the players have voted, it's the last call
     for (const id of ["p1", "p2", "p3", "p4", "p5", "p6", "p7"]) g.vote(id, SKIP);
-    expect(g.phase).toBe("VOTE_RESULTS");
+    expect(getGameView(g.state, "p1").voting?.lastCall).toBe(true);
   });
 
   it("see only public information", () => {

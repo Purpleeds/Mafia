@@ -10,6 +10,7 @@ import { Icon } from "../art/icons";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { ErrorText } from "../components/ErrorText";
 import { NicknameField } from "../components/NicknameField";
+import { PhotoField } from "../components/PhotoControls";
 import { randomAvatar } from "../lib/avatars";
 import { friendlyError } from "../lib/errors";
 import { goHome } from "../lib/router";
@@ -229,6 +230,7 @@ function JoinForm({ preview, onRefresh }: { preview: RoomPreview; onRefresh: () 
               </div>
             ) : null}
             <AvatarPicker idPrefix="join-avatar" value={avatar} onChange={setAvatar} />
+            <PhotoField avatar={avatar} />
             <ErrorText error={formError} />
             <button type="submit" className="btn btn-primary btn-block btn-large" disabled={pending}>
               {pending ? "Joining…" : spectator ? "Join as spectator" : "Join game"}

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import type { GameView, TimelineEntry } from "@mafia/shared";
 import { Icon } from "../../art/icons";
-import { RoleIcon, WinnerEmblem } from "../../art/roles";
+import { RoleIcon } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ErrorText } from "../../components/ErrorText";
 import { fill, isGangMember, nightOutcomeLabel, roleLabel, timelineDeath, winnerLabel, wordsFor } from "../../lib/wording";
@@ -45,7 +45,6 @@ export function GameOverScreen({ received }: PhaseProps) {
   return (
     <div className="stack">
       <section className="card card-highlight center-block winner-card" aria-labelledby="winner-title">
-        {winner ? <WinnerEmblem winner={winner} size={132} /> : <Icon name="flag" size={72} />}
         <h2 id="winner-title" className="winner">
           {winner ? winnerLabel(winner, view.settings) : "Game over"}
         </h2>

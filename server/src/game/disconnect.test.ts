@@ -131,6 +131,8 @@ describe("disconnects during the game", () => {
     // 3 for p4, 3 skip. If p7 were counted as skip, skip would win 4–3.
     for (const id of ["p1", "p2", "p3"]) g.vote(id, "p4");
     for (const id of ["p4", "p5", "p6"]) g.vote(id, SKIP);
+    expect(g.state.voting && getGameView(g.state, "p1").voting?.lastCall).toBe(true);
+    g.endPhase();
     expect(g.phase).toBe("VOTE_RESULTS");
     expect(g.state.voteReport?.outcome).toBe("tie");
   });

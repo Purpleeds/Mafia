@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from "react";
-import type { ContentMode, Role, Winner } from "@mafia/shared";
+import type { ContentMode, Role } from "@mafia/shared";
 import { mulberry32 } from "./rng";
 
 /** Each role's colours, original icon and card frame, drawn in SVG. */
@@ -444,28 +444,6 @@ export function CardBackArt({ mode, className }: { mode: ContentMode; className?
       <text x={cx} y={250} textAnchor="middle" fill={gold} style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: 92 }} opacity={0.9}>
         ?
       </text>
-    </svg>
-  );
-}
-
-const WINNER_ROLE: Record<Winner, Role> = { town: "villager", mafia: "mafia", jester: "jester" };
-
-/** The game-over emblem: the winning side's icon in a sunburst medallion. */
-export function WinnerEmblem({ winner, size = 120 }: { winner: Winner; size?: number }) {
-  const role = WINNER_ROLE[winner];
-  const t = ROLE_THEME[role];
-  return (
-    <svg viewBox="0 0 120 120" width={size} height={size} className="winner-emblem" aria-hidden="true" focusable="false">
-      <g className="rays" stroke={t.accent} strokeWidth={4} strokeLinecap="round" opacity={0.8}>
-        {Array.from({ length: 16 }, (_, i) => {
-          const a = (i * Math.PI) / 8;
-          return <path key={i} d={`M${60 + 44 * Math.cos(a)} ${60 + 44 * Math.sin(a)} L${60 + 56 * Math.cos(a)} ${60 + 56 * Math.sin(a)}`} />;
-        })}
-      </g>
-      <circle cx={60} cy={60} r={40} fill={t.light} stroke={t.main} strokeWidth={5} />
-      <svg x={30} y={30} width={60} height={60} viewBox="0 0 64 64" overflow="visible">
-        <RoleGlyph role={role} />
-      </svg>
     </svg>
   );
 }

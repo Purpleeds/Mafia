@@ -1,9 +1,11 @@
 import type {
+  AvatarImagesPayload,
   ChatHistoryPayload,
   ChatMessage,
   GameStatePayload,
   NarratorRequestPayload,
   RemovedPayload,
+  RoomNoticePayload,
 } from "@mafia/shared";
 import { mulberry32 } from "../../game/index.js";
 import { createMemoryLogger } from "../../logger.js";
@@ -16,7 +18,9 @@ export type Sent =
   | { kind: "chat"; room: string; player: string; payload: ChatMessage }
   | { kind: "history"; room: string; player: string; payload: ChatHistoryPayload }
   | { kind: "removed"; room: string; player: string; payload: RemovedPayload }
-  | { kind: "narration"; room: string; player: string; payload: NarratorRequestPayload };
+  | { kind: "narration"; room: string; player: string; payload: NarratorRequestPayload }
+  | { kind: "avatars"; room: string; player: string; payload: AvatarImagesPayload }
+  | { kind: "notice"; room: string; player: string; payload: RoomNoticePayload };
 
 export class FakeBroadcaster implements Broadcaster {
   sent: Sent[] = [];
@@ -34,6 +38,19 @@ export class FakeBroadcaster implements Broadcaster {
   }
   narrationRequest(room: string, player: string, payload: NarratorRequestPayload) {
     this.sent.push({ kind: "narration", room, player, payload });
+  }
+  avatarImages(room: string, player: string, payload: AvatarImagesPayload) {
+    this.sent.push({ kind: "avatars", room, player, payload });
+  }
+  notice(room: string, player: string, payload: RoomNoticePayload) {
+    this.sent.push({ kind: "notice", room, player, payload });
+  }
+  /** Ids of every avatar picture sent to this member. */
+  imagesTo(player: string): string[] {
+    return this.sent.flatMap((s) => (s.kind === "avatars" && s.player === player ? s.payload.images.map((i) => i.id) : []));
+  }
+  noticesTo(player: string): RoomNoticePayload[] {
+    return this.sent.flatMap((s) => (s.kind === "notice" && s.player === player ? [s.payload] : []));
   }
   /** Narrator requests, and who they were sent to. */
   narrationRequests(): Array<{ player: string; payload: NarratorRequestPayload }> {

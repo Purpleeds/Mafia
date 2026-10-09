@@ -59,6 +59,15 @@ export interface Avatar {
   seed: string;
 }
 
+/**
+ * An avatar as the server shows it: the generated look, plus `photo` (the id
+ * of a picture sent with avatar:images) when the player's own picture is
+ * showing. The generated look stays underneath as the fallback.
+ */
+export interface AvatarView extends Avatar {
+  photo?: string;
+}
+
 export function isAvatar(value: unknown): value is Avatar {
   if (typeof value !== "object" || value === null) return false;
   const { color, seed } = value as Record<string, unknown>;
@@ -126,4 +135,55 @@ export function validateRoomPassword(raw: unknown): CheckResult<string> {
     };
   }
   return { ok: true, value: raw };
+}
+
+// ---------------------------------------------------------------- avatar pictures
+
+/** The biggest picture a player may upload. */
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+/** Pictures are cropped square and stored at this size (pixels). */
+export const AVATAR_SIZE = 128;
+/** What the file picker offers. GIFs (animation) and SVGs (scripts) are never accepted. */
+export const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp";
+/** Where the client sends a picture (POST, raw bytes, with the room code and session token in headers). */
+export const AVATAR_UPLOAD_PATH = "/api/avatar";
+export const AVATAR_ROOM_HEADER = "x-room-code";
+
+export type ImageKind = "png" | "jpeg" | "webp" | "gif" | "svg" | "other";
+
+/**
+ * What a file really is, from its first bytes (never its name or the type the
+ * browser claims): PNG, JPEG and WebP are allowed; GIF and SVG are recognised
+ * so they can be refused with a clear message.
+ */
+export function sniffImageType(bytes: Uint8Array): ImageKind {
+  const at = (i: number) => bytes[i] ?? -1;
+  const ascii = (from: number, length: number) =>
+    String.fromCharCode(...Array.from(bytes.subarray(from, from + length)));
+  if (at(0) === 0x89 && ascii(1, 3) === "PNG" && at(4) === 0x0d && at(5) === 0x0a && at(6) === 0x1a && at(7) === 0x0a) {
+    return "png";
+  }
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return "jpeg";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") return "webp";
+  if (ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a") return "gif";
+  // SVG is text: skip a byte-order mark and whitespace, then look for an XML or <svg start.
+  const head = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes.subarray(0, 512))
+    .replace(/^\ufeff/, "")
+    .trimStart()
+    .toLowerCase();
+  if (head.startsWith("<svg") || head.startsWith("<?xml") || head.startsWith("<!doctype svg") || /<svg[\s>]/.test(head)) {
+    return "svg";
+  }
+  return "other";
+}
+
+/** Why a picture can't be used, in words for the player; null if its type and size are fine. */
+export function avatarFileProblem(kind: ImageKind, size: number): string | null {
+  if (size === 0) return "That file is empty.";
+  if (kind === "gif") return "GIFs can't be used. Pick a PNG, JPG or WebP picture.";
+  if (kind === "svg") return "SVG files can't be used. Pick a PNG, JPG or WebP picture.";
+  if (kind === "other") return "That file isn't a PNG, JPG or WebP picture.";
+  if (size > AVATAR_MAX_BYTES) return "Pictures can be at most 2 MB.";
+  return null;
 }

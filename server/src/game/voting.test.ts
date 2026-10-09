@@ -91,6 +91,9 @@ describe("ties", () => {
   it("starts a revote between the tied players when the host chose that", () => {
     const g = toVoting({ tieRule: "revote" });
     for (const [voter, target] of Object.entries(tie)) g.vote(voter, target);
+    // Everyone has voted: last call, then the timer closes the round.
+    expect(g.state.voting?.round).toBe(1);
+    g.endPhase();
     expect(g.phase).toBe("VOTING");
     expect(g.state.voting).toMatchObject({ round: 2, candidates: ["p4", "p5"], ballots: {} });
     expect(g.state.phaseEndsAt).toBe(g.now + 45_000);
@@ -108,8 +111,10 @@ describe("ties", () => {
   it("eliminates the revote winner", () => {
     const g = toVoting({ tieRule: "revote" });
     for (const [voter, target] of Object.entries(tie)) g.vote(voter, target);
+    g.endPhase();
     for (const voter of ["p1", "p2", "p3", "p5"]) g.vote(voter, "p4");
     for (const voter of ["p4", "p6", "p7"]) g.vote(voter, "p5");
+    g.endPhase();
     expect(g.phase).toBe("VOTE_RESULTS");
     expect(report(g)).toMatchObject({ round: 2, outcome: "eliminated", deaths: [{ playerId: "p4" }] });
   });
@@ -121,6 +126,7 @@ describe("ties", () => {
     for (const [voter, target] of Object.entries({ p1: "p4", p2: "p4", p3: "p4", p4: "p5", p6: "p5", p7: "p5", p5: SKIP })) {
       g.vote(voter, target);
     }
+    g.endPhase();
     expect(g.phase).toBe("VOTE_RESULTS");
     expect(report(g)).toMatchObject({ round: 2, outcome: "tie", deaths: [] });
   });
@@ -128,7 +134,8 @@ describe("ties", () => {
   it("treats a silent revote as skip", () => {
     const g = toVoting({ tieRule: "revote" });
     for (const [voter, target] of Object.entries(tie)) g.vote(voter, target);
-    g.endPhase();
+    g.endPhase(); // round 1 closes: revote
+    g.endPhase(); // nobody votes again
     expect(g.phase).toBe("VOTE_RESULTS");
     expect(report(g)?.outcome).toBe("skipped");
   });

@@ -1,104 +1,10 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { io as connect, type Socket as ClientSocket } from "socket.io-client";
-import type {
-  Avatar,
-  ChatMessage,
-  ClientEventName,
-  ClientToServerEvents,
-  GameStatePayload,
-  NarratorRequestPayload,
-  RemovedPayload,
-  Role,
-  ServerToClientEvents,
-  SessionInfo,
-} from "@mafia/shared";
+import type { NarratorRequestPayload, Role } from "@mafia/shared";
 import { createMafiaServer, type MafiaServerInstance } from "./app.js";
 import { createMemoryLogger } from "./logger.js";
 import { DEFAULT_RATE_LIMITS } from "./socket/rateLimiter.js";
-
-type AckOf<E extends ClientEventName> = Parameters<Parameters<ClientToServerEvents[E]>[1]>[0];
-
-const AVATAR: Avatar = { color: "violet", seed: "owl" };
-
-/** A browser stand-in that records everything the server sends it. */
-class TestClient {
-  readonly socket: ClientSocket<ServerToClientEvents, ClientToServerEvents>;
-  readonly received: Array<{ event: string; payload: unknown }> = [];
-  state: GameStatePayload | null = null;
-  chat: ChatMessage[] = [];
-  removed: RemovedPayload | null = null;
-  replaced = false;
-  session: SessionInfo | null = null;
-
-  constructor(url: string) {
-    this.socket = connect(url, { transports: ["websocket"], forceNew: true, reconnection: false });
-    this.socket.onAny((event: string, payload: unknown) => this.received.push({ event, payload }));
-    this.socket.on("game:state", (p) => {
-      if (!this.state || p.version >= this.state.version) this.state = p;
-    });
-    this.socket.on("chat:message", (m) => this.chat.push(m));
-    this.socket.on("room:removed", (p) => {
-      this.removed = p;
-    });
-    this.socket.on("session:replaced", () => {
-      this.replaced = true;
-    });
-  }
-
-  get view() {
-    if (!this.state) throw new Error("no state yet");
-    return this.state.view;
-  }
-
-  get role(): Role {
-    const role = this.view.you?.role;
-    if (!role) throw new Error("no role yet");
-    return role;
-  }
-
-  get id(): string {
-    if (!this.session) throw new Error("no session");
-    return this.session.playerId;
-  }
-
-  async call<E extends ClientEventName>(event: E, payload: Parameters<ClientToServerEvents[E]>[0]): Promise<AckOf<E>> {
-    const s = this.socket as unknown as { timeout(ms: number): { emitWithAck(e: string, ...a: unknown[]): Promise<unknown> } };
-    return (await s.timeout(3000).emitWithAck(event, payload)) as AckOf<E>;
-  }
-
-  /** Sends anything at all, bypassing the types. */
-  async raw(event: string, ...args: unknown[]): Promise<unknown> {
-    const s = this.socket as unknown as { timeout(ms: number): { emitWithAck(e: string, ...a: unknown[]): Promise<unknown> } };
-    return s.timeout(3000).emitWithAck(event, ...args);
-  }
-
-  rolesSeen(): string[] {
-    return this.received.flatMap((r) => [...JSON.stringify(r.payload).matchAll(/"role":"(\w+)"/g)].map((m) => m[1] ?? ""));
-  }
-
-  close() {
-    this.socket.close();
-  }
-}
-
-async function waitFor(check: () => boolean, label = "condition", ms = 3000): Promise<void> {
-  const start = Date.now();
-  while (!check()) {
-    if (Date.now() - start > ms) throw new Error(`timed out waiting for ${label}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
-
-function expectOk<T>(result: { ok: true; data: T } | { ok: false; error: { code: string } }): T {
-  if (!result.ok) throw new Error(`expected ok, got ${result.error.code}`);
-  return result.data;
-}
-
-function expectError(result: { ok: boolean; error?: { code: string } }, code: string): void {
-  expect(result.ok).toBe(false);
-  expect(result.error?.code).toBe(code);
-}
+import { AVATAR, TestClient, expectError, expectOk, waitFor } from "./testing/socketClient.js";
 
 let server: MafiaServerInstance;
 let url: string;
@@ -234,11 +140,11 @@ describe("over real sockets", () => {
 
     // by day the dead have their own channel, and the server routes them there: the living never see it
     expectOk(await victim.call("chat:send", { text: "it was them!" }));
-    expectOk(await victim.call("chat:react", { reaction: "shocked" }));
-    await waitFor(() => victim.chat.some((m) => m.reaction === "shocked"), "graveyard echo");
+    expectOk(await victim.call("chat:react", { reaction: "no_way" }));
+    await waitFor(() => victim.chat.some((m) => m.reaction === "no_way"), "graveyard echo");
     expect(victim.chat.every((m) => m.channel === "graveyard" || m.channel === "mafia" || m.channel === "public")).toBe(true);
     for (const p of players.filter((x) => x !== victim)) {
-      expect(p.chat.some((m) => m.text === "it was them!" || m.reaction === "shocked")).toBe(false);
+      expect(p.chat.some((m) => m.text === "it was them!" || m.reaction === "no_way")).toBe(false);
     }
   });
 

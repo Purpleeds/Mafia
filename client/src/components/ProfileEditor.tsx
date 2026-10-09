@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { validateNickname, type Avatar, type UpdateProfilePayload } from "@mafia/shared";
+import { validateNickname, type Avatar, type AvatarView, type GameView, type UpdateProfilePayload } from "@mafia/shared";
 import { saveProfile } from "../lib/storage";
 import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
@@ -7,9 +7,10 @@ import { AvatarBadge } from "./AvatarBadge";
 import { AvatarPicker } from "./AvatarPicker";
 import { ErrorText } from "./ErrorText";
 import { NicknameField } from "./NicknameField";
+import { RoomPhotoControls } from "./PhotoControls";
 
-/** Lobby only: change your nickname and avatar. */
-export function ProfileEditor({ name, avatar }: { name: string; avatar: Avatar }) {
+/** Lobby only: change your nickname, drawn avatar and picture. */
+export function ProfileEditor({ name, avatar, view }: { name: string; avatar: AvatarView; view: GameView }) {
   const [open, setOpen] = useState(false);
   return (
     <section className="card" aria-labelledby="profile-title">
@@ -24,13 +25,14 @@ export function ProfileEditor({ name, avatar }: { name: string; avatar: Avatar }
         ) : null}
       </div>
       {open ? (
-        <ProfileForm initialName={name} initialAvatar={avatar} onDone={() => setOpen(false)} />
+        <ProfileForm initialName={name} initialAvatar={{ color: avatar.color, seed: avatar.seed }} onDone={() => setOpen(false)} />
       ) : (
         <div className="profile-summary">
           <AvatarBadge avatar={avatar} size={48} />
           <span className="profile-name">{name}</span>
         </div>
       )}
+      <RoomPhotoControls view={view} />
     </section>
   );
 }

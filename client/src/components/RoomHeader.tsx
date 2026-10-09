@@ -40,7 +40,7 @@ export function RoomHeader({
         {code}
       </h1>
       <div className="room-meta">
-        {mode ? <ModeBadge mode={mode} large /> : null}
+        {mode ? <ModeBadge mode={mode} /> : null}
         <ConnectionIndicator />
       </div>
       {children}

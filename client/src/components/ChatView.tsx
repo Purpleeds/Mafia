@@ -1,35 +1,59 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { MAX_CHAT_LENGTH, type Avatar, type ChatMessage, type ChatReaction } from "@mafia/shared";
+import { MAX_CHAT_LENGTH, containsLink, type AvatarView, type ChatMessage, type ChatReaction } from "@mafia/shared";
 import { Icon } from "../art/icons";
-import { REACTIONS, reactionInfo } from "../lib/reactions";
+import { displayChatText, setMuted, useMuted, usePrefs } from "../lib/prefs";
+import { REACTIONS, reactionLabel } from "../lib/reactions";
 import { AvatarBadge } from "./AvatarBadge";
+import { ChatFilterToggle, UncensoredNotice } from "./ChatNotices";
 
 interface ChatViewProps {
   messages: ChatMessage[];
   youId: string | null;
+  /** The room, for remembering who you muted. */
+  roomCode: string;
   /** Null when nobody can write here (read-only). */
   onSend: ((text: string) => Promise<string | null>) | null;
   /** Quick reactions; offered whenever typing is. Returns an error message or null. */
   onReact?: ((reaction: ChatReaction) => Promise<string | null>) | null;
-  avatarOf: (senderId: string) => Avatar | null;
+  avatarOf: (senderId: string) => AvatarView | null;
   placeholder: string;
   /** Shown instead of the input when reading only. */
   readOnlyNote?: string;
   emptyText?: string;
   label: string;
+  /** The host chose uncensored chat: say so above the messages. */
+  uncensored?: boolean;
 }
 
 /** A message list and input. Used for the day chat, the graveyard and the Mafia whisper. */
-export function ChatView({ messages, youId, onSend, onReact, avatarOf, placeholder, readOnlyNote, emptyText, label }: ChatViewProps) {
+export function ChatView({
+  messages,
+  youId,
+  roomCode,
+  onSend,
+  onReact,
+  avatarOf,
+  placeholder,
+  readOnlyNote,
+  emptyText,
+  label,
+  uncensored,
+}: ChatViewProps) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [muting, setMuting] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const prefs = usePrefs();
+  const muted = useMuted(roomCode);
+
+  const shown = messages.filter((m) => !muted.includes(m.senderId) || m.senderId === youId);
+  const hiddenCount = messages.length - shown.length;
 
   useEffect(() => {
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [messages.length]);
+  }, [shown.length]);
 
   const [reacting, setReacting] = useState(false);
   const react = async (reaction: ChatReaction) => {
@@ -44,6 +68,11 @@ export function ChatView({ messages, youId, onSend, onReact, avatarOf, placehold
     e.preventDefault();
     const value = text.trim();
     if (!value || !onSend || pending) return;
+    // The server blocks links too; saying so straight away saves a round trip.
+    if (containsLink(value)) {
+      setError("Links can't be shared in chat.");
+      return;
+    }
     setPending(true);
     const problem = await onSend(value);
     setPending(false);
@@ -56,30 +85,58 @@ export function ChatView({ messages, youId, onSend, onReact, avatarOf, placehold
 
   return (
     <div className="chat">
+      {uncensored ? <UncensoredNotice /> : null}
       <ul className="chat-list" ref={listRef} aria-label={label} aria-live="polite" tabIndex={0}>
-        {messages.length === 0 ? <li className="chat-empty">{emptyText ?? "No messages yet."}</li> : null}
-        {messages.map((m) => {
+        {shown.length === 0 ? <li className="chat-empty">{emptyText ?? "No messages yet."}</li> : null}
+        {shown.map((m) => {
           const avatar = avatarOf(m.senderId);
           const mine = m.senderId === youId;
           return (
-            <li key={m.id} className={`chat-msg${mine ? " is-mine" : ""}`}>
+            <li key={m.id} className={`chat-msg${mine ? " is-mine" : ""}${m.reaction ? " is-reaction" : ""}`}>
               {avatar ? <AvatarBadge avatar={avatar} size={28} /> : <span className="chat-avatar-gap" />}
               <div className="chat-bubble">
-                <span className="chat-name">{mine ? "You" : m.senderName}</span>
-                {m.reaction ? (
-                  <span className="chat-text chat-reaction">
-                    <Icon name={reactionInfo(m.reaction).icon} size={26} />
-                    <span className="sr-only">{reactionInfo(m.reaction).label}</span>
-                    <span aria-hidden="true">{reactionInfo(m.reaction).label}</span>
-                  </span>
+                {mine ? (
+                  <span className="chat-name">You</span>
                 ) : (
-                  <span className="chat-text">{m.text}</span>
+                  <button
+                    type="button"
+                    className="chat-name chat-name-button"
+                    aria-expanded={muting === m.id}
+                    onClick={() => setMuting((current) => (current === m.id ? null : m.id))}
+                  >
+                    {m.senderName}
+                    <span className="sr-only">: options</span>
+                  </button>
                 )}
+                {m.reaction ? (
+                  <span className="chat-text chat-reaction">{reactionLabel(m.reaction)}</span>
+                ) : (
+                  <span className="chat-text">{displayChatText(m.text, prefs)}</span>
+                )}
+                {muting === m.id ? (
+                  <span className="chat-msg-actions">
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={() => {
+                        setMuted(roomCode, m.senderId, true);
+                        setMuting(null);
+                      }}
+                    >
+                      <Icon name="chatOff" size={16} />
+                      Mute {m.senderName}
+                    </button>
+                    <span className="field-hint">Only on your screen. They won't know.</span>
+                  </span>
+                ) : null}
               </div>
             </li>
           );
         })}
       </ul>
+      {hiddenCount > 0 ? (
+        <MutedSummary count={hiddenCount} roomCode={roomCode} ids={muted} messages={messages} />
+      ) : null}
       {onSend && onReact ? (
         <div className="reaction-bar" role="group" aria-label="Quick reactions">
           {REACTIONS.map((r) => (
@@ -87,12 +144,10 @@ export function ChatView({ messages, youId, onSend, onReact, avatarOf, placehold
               key={r.id}
               type="button"
               className="btn btn-small reaction-btn"
-              aria-label={r.label}
-              title={r.label}
               disabled={reacting}
               onClick={() => void react(r.id)}
             >
-              <Icon name={r.icon} size={24} />
+              {r.label}
             </button>
           ))}
         </div>
@@ -124,8 +179,44 @@ export function ChatView({ messages, youId, onSend, onReact, avatarOf, placehold
       )}
       {error ? (
         <p className="error-text" role="alert">
+          <Icon name="warn" size={16} />
           {error}
         </p>
+      ) : null}
+      <ChatFilterToggle />
+    </div>
+  );
+}
+
+/** "3 messages from muted players are hidden", with a way to unmute each of them. */
+function MutedSummary({
+  count,
+  roomCode,
+  ids,
+  messages,
+}: {
+  count: number;
+  roomCode: string;
+  ids: readonly string[];
+  messages: ChatMessage[];
+}) {
+  const [open, setOpen] = useState(false);
+  const names = new Map(messages.map((m) => [m.senderId, m.senderName]));
+  const mutedHere = ids.filter((id) => names.has(id));
+  return (
+    <div className="chat-muted">
+      <button type="button" className="btn btn-ghost btn-small" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name="chatOff" size={16} />
+        {count} {count === 1 ? "message" : "messages"} from muted players hidden
+      </button>
+      {open ? (
+        <div className="button-row">
+          {mutedHere.map((id) => (
+            <button key={id} type="button" className="btn btn-small" onClick={() => setMuted(roomCode, id, false)}>
+              Unmute {names.get(id)}
+            </button>
+          ))}
+        </div>
       ) : null}
     </div>
   );

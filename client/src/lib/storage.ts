@@ -2,12 +2,13 @@
  * Small, failure-tolerant wrappers around localStorage. Private browsing or a
  * full quota must never break joining a game, so every access is guarded.
  */
-import { normalizeRoomCode, type Avatar, type SessionInfo } from "@mafia/shared";
+import { normalizeRoomCode, type Avatar, type GameSettings, type SessionInfo, type SettingsPatch } from "@mafia/shared";
 import { migrateAvatar } from "./avatars";
 
 const SESSION_PREFIX = "mafia:session:";
 const ACTIVE_KEY = "mafia:active";
 const PROFILE_KEY = "mafia:profile";
+const HOST_SETTINGS_KEY = "mafia:hostSettings";
 
 /**
  * Normally your seat is remembered per browser (localStorage), so closing the tab
@@ -103,4 +104,42 @@ export function loadProfile(): Partial<SavedProfile> {
 
 export function saveProfile(profile: Partial<SavedProfile>): void {
   write(PROFILE_KEY, { ...loadProfile(), ...profile });
+}
+
+// ---------------------------------------------------------------- the host's last settings
+
+/** The settings a host last used, so their next room starts the same way. Always this browser (not per tab). */
+export function saveHostSettings(settings: GameSettings): void {
+  const patch: SettingsPatch = {
+    contentMode: settings.contentMode,
+    mafiaCount: settings.mafiaCount,
+    optionalRoles: { ...settings.optionalRoles },
+    timers: { ...settings.timers },
+    tieRule: settings.tieRule,
+    revealRoleOnDeath: settings.revealRoleOnDeath,
+    showVotes: settings.showVotes,
+    announceSaves: settings.announceSaves,
+    chatFilter: settings.chatFilter,
+    customAvatars: settings.customAvatars,
+    sneakyGang: settings.sneakyGang,
+    aiNarrator: settings.aiNarrator,
+  };
+  const text = JSON.stringify(patch);
+  try {
+    if (window.localStorage.getItem(HOST_SETTINGS_KEY) !== text) window.localStorage.setItem(HOST_SETTINGS_KEY, text);
+  } catch {
+    // storage blocked: the next room starts with the defaults
+  }
+}
+
+/** The last settings, as a change for the server to check (it ignores them if anything is off). */
+export function loadHostSettings(): SettingsPatch | null {
+  try {
+    const raw = window.localStorage.getItem(HOST_SETTINGS_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as unknown;
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as SettingsPatch) : null;
+  } catch {
+    return null;
+  }
 }

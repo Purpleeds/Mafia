@@ -24,20 +24,20 @@
 }
 
 /* ------------------------------------------------------------------ badges and status */
+/* The mode is always shown, but quietly: small muted text in a thin outline. */
 .mode-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 1px 8px;
   border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.85rem;
-  border: 2px solid var(--accent);
-  background: var(--info-bg);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  background: transparent;
   white-space: nowrap;
 }
-.mode-badge.is-large { font-size: 1.05rem; padding: 6px 16px; }
-.mode-badge-normal { border-style: double; border-width: 3px; }
 
 .conn-indicator { font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
 .conn-indicator-connected { color: var(--success); }
@@ -248,9 +248,7 @@ html[data-motion="reduce"] .flip-inner { transition: none; }
   font-weight: 700;
   color: var(--text);
 }
-.sleep-moon { color: #fff2c4; animation: float 6s ease-in-out infinite; }
-.zzz { display: inline-block; animation: drift 2.4s ease-in-out infinite; }
-@keyframes drift { 50% { transform: translateY(-4px); opacity: 0.5; } }
+.sleep-moon { color: var(--text-muted); }
 .night-card { border-color: var(--border); }
 .whisper { display: flex; flex-direction: column; gap: 8px; }
 

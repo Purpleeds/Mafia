@@ -45,7 +45,27 @@ export interface GameState {
   narration: NarrationState | null;
   /** Ids of the ready-made lines already used in this game, so none repeats. */
   usedTemplates: string[];
+  /** Counts the games started in this room (0 before the first). */
+  gameNumber: number;
+  /** Set while the host has paused the game: the phase timer is frozen with this much left. */
+  paused: { remainingMs: number } | null;
+  /** Day discussion: living players who are done talking. When all are, voting starts. */
+  discussionDone: string[];
+  /** Public events of this game, for the "What's happened so far" log. */
+  log: LogEntry[];
 }
+
+/**
+ * A public event. Saves are stored as they happened; the view only shows them
+ * when the host announces saves, and roles only when they are public.
+ */
+export type LogEntry =
+  | { kind: "night"; round: number; deaths: DeathRecord[]; saved: boolean }
+  | { kind: "vote"; round: number; outcome: VoteOutcome; deaths: DeathRecord[] }
+  | { kind: "revote"; round: number; tiedIds: string[] }
+  | { kind: "kicked"; round: number; playerId: string }
+  | { kind: "paused" | "resumed" | "time_added"; round: number; phase: Phase }
+  | { kind: "discussion_skipped"; round: number; by: "host" | "players" };
 
 /** Why a ready-made line was used instead of an AI-written one. Server only (logs). */
 export type NarrationFallback =
@@ -80,6 +100,8 @@ export interface PlayerState {
   ackedRole: boolean;
   /** Removed by the host mid-game: out of the game, but kept in the list. */
   kicked: boolean;
+  /** Lobby: has said they're ready to play. */
+  ready: boolean;
 }
 
 export interface SpectatorState {
@@ -172,6 +194,14 @@ export type GameAction =
   | { type: "ACK_ROLE"; playerId: string }
   | { type: "NIGHT_ACTION"; playerId: string; targetId: string; secondTargetId?: string }
   | { type: "CAST_VOTE"; playerId: string; targetId: string }
+  | { type: "SET_READY"; playerId: string; ready: boolean }
+  /** Host: freeze the timer, start it again, add 30 seconds, or end the discussion now. */
+  | { type: "PAUSE"; playerId: string }
+  | { type: "RESUME"; playerId: string }
+  | { type: "ADD_TIME"; playerId: string }
+  | { type: "SKIP_TO_VOTING"; playerId: string }
+  /** A living player is done talking (or not after all). */
+  | { type: "SKIP_DISCUSSION"; playerId: string; skip: boolean }
   /**
    * Sent by the server once the host's browser has answered (or can't): the AI's
    * text, or null for a ready-made line. The text is checked before it is used.

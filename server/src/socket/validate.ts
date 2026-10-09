@@ -9,13 +9,18 @@ import {
   type DevFillBotsPayload,
   type ChatReaction,
   type ChatSendPayload,
+  type CheckSeatPayload,
   type CreateRoomPayload,
   type JoinRoomPayload,
   type NarratorSubmitPayload,
   type NightActionPayload,
   type PeekRoomPayload,
   type ResumeSessionPayload,
+  type ReviewAvatarPayload,
   type SetPasswordPayload,
+  type SetReadyPayload,
+  type SettingsPatch,
+  type SkipDiscussionPayload,
   type TargetPlayerPayload,
   type TimeSyncPayload,
   type UpdateProfilePayload,
@@ -87,6 +92,12 @@ export function parseCreateRoom(raw: unknown): Parsed<CreateRoomPayload> {
   const value: CreateRoomPayload = { name, avatar };
   if (customCode !== undefined) value.customCode = customCode;
   if (password !== undefined) value.password = password;
+  if (raw.settings !== undefined) {
+    // Only the size is checked here; the engine checks every setting (and ignores the lot if any is wrong).
+    const settings = parseSettingsPatch(raw.settings);
+    if (!settings.ok) return bad(settings.message);
+    value.settings = settings.value as SettingsPatch;
+  }
   return ok(value);
 }
 
@@ -119,6 +130,29 @@ export function parseResume(raw: unknown): Parsed<ResumeSessionPayload> {
   const token = raw.sessionToken;
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) return bad("Invalid session token.");
   return ok({ roomCode, sessionToken: token });
+}
+
+/** The home screen's seat check takes the same room code and token as a resume. */
+export function parseCheckSeat(raw: unknown): Parsed<CheckSeatPayload> {
+  return parseResume(raw);
+}
+
+export function parseSetReady(raw: unknown): Parsed<SetReadyPayload> {
+  if (!isRecord(raw) || typeof raw.ready !== "boolean") return bad("Expected { ready: true or false }.");
+  return ok({ ready: raw.ready });
+}
+
+export function parseReviewAvatar(raw: unknown): Parsed<ReviewAvatarPayload> {
+  if (!isRecord(raw)) return bad("Expected { playerId, approve }.");
+  const playerId = stringField(raw, "playerId", MAX_ID);
+  if (playerId === null) return bad("playerId must be a player id.");
+  if (typeof raw.approve !== "boolean") return bad("approve must be true or false.");
+  return ok({ playerId, approve: raw.approve });
+}
+
+export function parseSkipDiscussion(raw: unknown): Parsed<SkipDiscussionPayload> {
+  if (!isRecord(raw) || typeof raw.skip !== "boolean") return bad("Expected { skip: true or false }.");
+  return ok({ skip: raw.skip });
 }
 
 export function parseUpdateProfile(raw: unknown): Parsed<UpdateProfilePayload> {

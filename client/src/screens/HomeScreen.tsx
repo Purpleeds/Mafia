@@ -8,6 +8,7 @@ import {
   validateNickname,
   validateRoomPassword,
   type Avatar,
+  type CheckSeatResult,
   type CreateRoomPayload,
 } from "@mafia/shared";
 import { Logo } from "../art/Logo";
@@ -15,10 +16,11 @@ import { Icon } from "../art/icons";
 import { AvatarPicker } from "../components/AvatarPicker";
 import { ErrorText } from "../components/ErrorText";
 import { NicknameField } from "../components/NicknameField";
+import { PhotoField } from "../components/PhotoControls";
 import { randomAvatar } from "../lib/avatars";
 import { friendlyError } from "../lib/errors";
 import { HOW_TO_PLAY_PATH, ROLE_GUIDE_PATH, goToRoom, navigate } from "../lib/router";
-import { loadActiveRoom, loadProfile } from "../lib/storage";
+import { forgetSession, loadActiveRoom, loadProfile, loadSession } from "../lib/storage";
 import { call } from "../net/socket";
 import { createRoom } from "../state/controller";
 import { useAppState } from "../state/store";
@@ -27,9 +29,6 @@ import { SoundButton } from "../components/SoundControls";
 
 export function HomeScreen() {
   const notice = useAppState((s) => (s.notice && s.notice.roomCode === null ? s.notice : null));
-  const sessionRoom = useAppState((s) => s.session?.roomCode ?? null);
-  const [savedRoom] = useState(() => loadActiveRoom());
-  const returnTo = sessionRoom ?? savedRoom;
 
   return (
     <div className="screen home">
@@ -44,14 +43,7 @@ export function HomeScreen() {
 
       <NoticeBanner notice={notice} />
 
-      {returnTo ? (
-        <section className="card card-highlight">
-          <p className="card-lead">You're still in room {returnTo}.</p>
-          <button type="button" className="btn btn-primary btn-block" onClick={() => goToRoom(returnTo)}>
-            Back to room {returnTo}
-          </button>
-        </section>
-      ) : null}
+      <RejoinBanner />
 
       <JoinByCode />
       <CreateRoomCard />
@@ -65,6 +57,75 @@ export function HomeScreen() {
         </button>
       </nav>
     </div>
+  );
+}
+
+const STAGE_TEXT: Record<CheckSeatResult["stage"], string> = {
+  lobby: "Waiting in the lobby",
+  in_game: "Game in progress",
+  game_over: "The game just finished",
+};
+
+/**
+ * "Rejoin your last game": shown when this device still has a seat in a room
+ * that is still running. The server confirms both before the banner appears;
+ * a seat that has gone is quietly forgotten.
+ */
+function RejoinBanner() {
+  const sessionRoom = useAppState((s) => s.session?.roomCode ?? null);
+  const connected = useAppState((s) => s.connection === "connected");
+  const [saved] = useState(() => {
+    const code = loadActiveRoom();
+    return code ? loadSession(code) : null;
+  });
+  const [check, setCheck] = useState<
+    { status: "checking" } | { status: "ok"; result: CheckSeatResult } | { status: "gone" } | { status: "unknown" }
+  >({ status: "checking" });
+
+  useEffect(() => {
+    if (!saved || !connected) return;
+    let cancelled = false;
+    void call("room:checkSeat", { roomCode: saved.roomCode, sessionToken: saved.sessionToken }).then((result) => {
+      if (cancelled) return;
+      if (result.ok && result.data.seatValid) setCheck({ status: "ok", result: result.data });
+      else if (result.ok || result.error.code === "ROOM_NOT_FOUND") {
+        // The room closed or the seat expired: nothing to come back to.
+        if (sessionRoom !== saved.roomCode) forgetSession(saved.roomCode);
+        setCheck({ status: "gone" });
+      } else {
+        // Couldn't check (busy or offline): offer it anyway; the room screen sorts it out.
+        setCheck({ status: "unknown" });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [saved, connected, sessionRoom]);
+
+  const code = sessionRoom ?? saved?.roomCode ?? null;
+  if (!code) return null;
+  if (!sessionRoom && check.status !== "ok" && check.status !== "unknown") {
+    if (check.status === "gone" || !saved) return null;
+    return (
+      <p className="field-hint center-text" role="status">
+        <span className="spinner" aria-hidden="true" /> Checking your last game…
+      </p>
+    );
+  }
+  const stage = check.status === "ok" ? STAGE_TEXT[check.result.stage] : null;
+  return (
+    <section className="card card-highlight rejoin" aria-labelledby="rejoin-title">
+      <h2 id="rejoin-title" className="card-title">
+        Rejoin your last game
+      </h2>
+      <p className="card-lead">
+        Room {code}
+        {stage ? ` · ${stage}` : ""}
+      </p>
+      <button type="button" className="btn btn-primary btn-block" onClick={() => goToRoom(code)}>
+        Rejoin room {code}
+      </button>
+    </section>
   );
 }
 
@@ -236,6 +297,7 @@ function CreateRoomForm() {
         autoFocus
       />
       <AvatarPicker idPrefix="create-avatar" value={avatar} onChange={setAvatar} />
+      <PhotoField avatar={avatar} />
 
       <details className="advanced">
         <summary>Room options (optional)</summary>

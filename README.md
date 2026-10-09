@@ -40,11 +40,12 @@ npm start        # http://localhost:3000
 
 ## Screens (client)
 
-Home (create or join; the code box jumps into the room as soon as it finds one) → Lobby (big code, link, QR code, Safe/Normal badge,
-host settings) → Role reveal (tap-to-flip 3D card; it hides again when the page loses focus) → Night → Morning news (typewriter
-narrator) → Day (player grid, chat, countdown) → Voting (tap to vote, live counts) → Vote results → Game over (roles, timeline,
-Play Again). "How to play" and the role guide are pages (`/how-to-play`, `/role-guide`) and a help dialog inside the game.
-The mode badge, room code and connection status are in the top bar on every in-game screen.
+Home (create or join; "Rejoin your last game" when your last room still runs; the code box jumps into the room as soon as it
+finds one) → Lobby (big code, link, QR code, Ready button, host settings and picture approvals) → Role reveal (tap-to-flip 3D
+card; it hides again when the page loses focus) → Night → Morning news (typewriter narrator) → Day (player grid, chat, "Done
+talking", countdown) → Voting (pick, then confirm; live counts) → Vote results → Game over (roles, highlights, timeline, Play
+Again). "How to play" and the role guide are pages (`/how-to-play`, `/role-guide`) and a help dialog inside the game. A small
+mode label, the room code and the connection status are in the top bar on every in-game screen.
 
 At night every player sees the same screen: players with a night power use it for real, everyone else gets a look-alike grid that
 sends nothing to the server, so a glance at someone's phone tells you nothing about their role. The host can hide *who* voted for
@@ -52,7 +53,10 @@ whom (counts stay visible) with the "Show who voted for whom" setting.
 
 ## Look and feel
 
-All art is original and made in code: no image files, no icon fonts, no emoji.
+All art is original and made in code: no image files, no icon fonts, no emoji anywhere in the interface. Icons come from one set,
+[Lucide](https://lucide.dev) (`lucide-react`, ISC licence, a permissive MIT-style licence), drawn in the text colour through the
+`Icon` component (`client/src/art/icons.tsx`), so every screen uses the same line style. There is one small logo, on the home
+screen only; in a room the mode is a quiet text label, and typography and spacing do the rest.
 
 - **Background** (`client/src/fx`): one full-screen WebGL 1 fragment shader draws a cartoon village in a valley: sky, sun and
   moon crossing the sky, twinkling stars, drifting clouds, mist between the hills, the village and the meadow (noise), window
@@ -88,15 +92,16 @@ only accepts settings in the lobby. The rules are identical in both modes; only 
 | The Mafia's name | "The Mafia", or "The Sneaky Gang" if the host switches that on (it renames them on every screen, in the help and in the narration) | "The Mafia" |
 | Look | Bright storybook village; an elimination is a soft puff of smoke | Dark noir village; an elimination is a red pulse |
 | Sound | Birdsong, a cartoon "poof", cheerful tunes | More wind and owls, a dramatic sting, darker tunes |
-| Chat filter | Always on: the server forces it, the host can't turn it off | On by default; the host may turn it off |
+| Chat filter | Always **Strict**: the server forces it, and the option isn't shown | **Standard** by default; the host may pick Strict, Standard or Uncensored |
+| Players' own pictures | **Host approval** by default (also Off or On) | **On** by default (also Off or Host approval) |
 
 - `client/src/lib/wording.ts` is the one place that decides words like "eliminated", "graveyard" and "Mafia" for the mode and the
   Sneaky Gang name, so no screen hard-codes a violent word. `shared/src/wordlists.ts` holds the banned words per mode
   (`SAFE_BANNED_WORDS` has every violence, weapon, death and blood word and their forms; `NORMAL_BANNED_WORDS` has gore and sexual
   terms). They are used to check the AI's text on the server and by tests that scan every wording table, every ready-made
   narration and the rendered help pages. Inside a game the role guide only shows the room's own wording.
-- The chat filter (`censorProfanity` in `shared/src/profanity.ts`) turns rude words into `****` on the server before a message is
-  stored or sent, so nobody receives the original, not even the sender's own screen.
+- The chat filter (`filterChatText` in `shared/src/profanity.ts`) turns words into `****` on the server before a message is
+  stored or sent, so nobody receives the original, not even the sender's own screen (see Chat for the levels).
 
 ## AI narrator
 
@@ -158,10 +163,80 @@ phase. A client only sends `{ text }`; it can't pick, and can't try, a channel.
 | Everyone else | night, and the role reveal | locked |
 
 - Messages are 1–300 characters (control and invisible characters are stripped), limited to a burst of 5 then one a second per player.
-- The profanity filter masks rude words on the server before a message is stored or sent: always in Safe Mode, the host's choice
-  in Normal Mode (on by default).
-- Four quick reactions (thinking, suspicious, laughing, shocked) sit above the text box wherever you may write. They are sent as
-  `chat:react`, follow the same routing, lock and rate limit, and carry no text. At night the Mafia can react in their whisper box.
+- **Filter levels** (host setting, applied on the server before a message is stored or sent; whole words become `****`):
+  - *Strict*: swearing, slurs, sexual words and telling someone to hurt themselves, plus milder words ("damn", "hell", "idiot",
+    "stupid", "shut up"…).
+  - *Standard*: the same without the milder words.
+  - *Uncensored*: nothing is hidden. **Normal Mode only.** In Safe Mode chat is always Strict, the option is hidden, and the
+    server refuses any request for another level, however it is sent (a crafted `host:updateSettings`, remembered settings on
+    `room:create`, or a stored room from an older version). When Uncensored is on, everyone sees a notice in the lobby and above
+    the chat.
+- **Always on, at every level, Uncensored included**: the length limit, the rate limit, the host's kick, and **no links**. A message
+  with a web address, a bare domain (`free-robux.gg`), "example dot com" or an IP address is refused with "Links can't be shared
+  in chat" (`containsLink`; words like "ok.so" or "e.g." are fine). Chat is shown as plain text, so nothing in it is ever clickable.
+- **Hide strong language for me**: every player's own switch (under the chat and in Display settings) runs the Strict filter on
+  their screen only, whatever the host chose. Saved on the device (`mafia.prefs`).
+- **Mute**: tap a name in the chat, or the "…" next to a player, to hide their messages on your screen only (they aren't told).
+  Muted players are remembered per room on the device (`mafia.muted`).
+- Four quick reactions, as small word buttons, sit above the text box wherever you may write: **Sus**, **Agree**, **No way**,
+  **Hmm**. They are sent as `chat:react`, follow the same routing, lock and rate limit, and carry no text. At night the Mafia can
+  react in their whisper box.
+
+## Players' own pictures
+
+In the lobby (or on the create/join form) a player can use their drawn avatar or their own picture.
+
+- **On the device**: pick a PNG, JPG or WebP up to 2 MB. GIFs and SVGs are refused; the type is read from the file's first bytes,
+  not its name. Drag and zoom to choose the square (only the circle shows), and it is shrunk to 128x128 before it is sent. The
+  cropped picture is remembered on the device (`mafia.photo`) and sent again automatically in the next room, unless that room's
+  host turned it down or removed it.
+- **Upload**: `POST /api/avatar` with the raw bytes, the room code in `X-Room-Code` and the session token as a Bearer token. The
+  server checks, in order: a per-IP limit; that the token belongs to someone in that room, in the lobby, with pictures allowed;
+  **3 uploads per player per minute** (failed tries count); at most 2 MB (a bigger body is refused without being read).
+- **Never trusted**: the server reads the real type from the bytes (PNG, JPEG or WebP only; GIF, SVG and anything else refused),
+  makes the decoder agree, refuses animated images and decompression bombs (over 16 megapixels), then **re-encodes the pixels
+  with [sharp](https://sharp.pixelplumbing.com/) into a fresh 128x128 WebP**. Metadata (EXIF, location), extra chunks and anything
+  appended to the file are gone. Anything that fails is rejected.
+- **Stored in memory only**, with the room (`server/src/rooms/avatars.ts`), never on disk or in Key Value. A picture is deleted
+  when its player leaves or is removed, and every picture when the room closes. After a server restart players simply have their
+  drawn avatars until they upload again (which their device does by itself in the lobby).
+- **Only for the room**: pictures are sent as `avatar:images` (data URLs the server encoded) through each member's private socket
+  room, once per picture; nobody outside the room can get them, and there is no public URL.
+- **Host controls** (lobby setting *Players' own pictures*): **Off**, **On** (shows to everyone straight away) or **Host approval**
+  (the host sees each new picture in "Pictures to approve" and approves or rejects it; until then only the uploader and the host
+  see it). Safe Mode defaults to Host approval, Normal Mode to On. The host can remove anyone's picture at any time (the "…" menu),
+  which puts their drawn avatar back; the player is told.
+
+## During a game
+
+- **Host controls** (top bar, host only): **Pause** (the timer freezes for everyone; choices still count, but the phase can't end
+  until the host resumes), **+30 s** (up to 15 minutes left) and, during the discussion, **Skip to voting**. Everyone sees a short
+  message and the action in the log.
+- **Done talking**: every player still in can tap it during the discussion; when they all have, voting starts early.
+- **Voting**: tap a player (or press their number), then confirm. "Your vote: …" always shows your current choice, and you can
+  change it until the timer ends. When everyone has voted the timer drops to a 10-second last call instead of closing at once.
+- **What's happened so far**: a collapsible log of public events only (who left the game and how, vote results, ties, removals,
+  pauses and skips). Roles appear only when the host reveals roles; saves only when the host announces them.
+- **My notes**: tag other players Suspect, Trust or Unsure and add a few words. On your device only, cleared when the game ends.
+  Tags show on the player cards on your screen.
+- **Private cards, the same for everyone**: what your role knows is inside a closed "Your role" card and, each morning, a closed
+  "Your private note", which every player has, in the same place, at the same time ("Nothing new for you tonight" for most). No
+  role gets an extra card or banner that someone sitting nearby could spot.
+- **Vibration** (phones that support it): a buzz when a new phase starts, on every phone at once, and a short tap when you confirm
+  something on your own screen. At night the decoy confirm buzzes exactly like a real one. Nothing ever buzzes, sounds or flashes
+  only for players with a night role.
+- **Keep the screen on**: the Screen Wake Lock API keeps phones awake during a game, asked for again whenever the page comes back.
+  Where a browser doesn't support it nothing changes and the phone's own auto-lock applies.
+- **First-game tips**: a short tip the first time you see each phase, the same for every role. "Got it" hides one; "Turn off tips"
+  hides them all (Display settings can show them again).
+- **Keyboard** (computers): number keys pick players (1 is the first card shown, 0 the tenth, S is Skip) and Enter confirms, at
+  night and when voting. The numbers show on the cards.
+- **Messages about people**: everyone else gets a short message when someone joins, leaves, is removed by the host, loses their
+  connection (after the 60-second grace) or comes back, and when the host changes.
+- **Remembered**: your name, drawn avatar, picture and display settings, and (for hosts) the last room settings, which a new room
+  starts with (the server checks them like any change and ignores them if anything is off).
+- **Loading and errors**: every wait has a spinner and words, a screen that hits a bug shows a "Reload" card instead of going
+  blank, and errors are friendly sentences (technical server messages are never shown).
 
 ## Testing alone (development tools)
 
@@ -171,7 +246,7 @@ answers `{ "dev": false }` and the client shows none of it.
 
 - **Fill with bots**: a "Development tools" card in the host's lobby. *Fill with bots* brings the room up to 8 players, *Add a
   bot* adds one. Bots join through the same service call as a browser, so they are normal players (named "Bot Ada", "Bot Bo"…).
-  Every 1.5 s each bot looks at its own view and maybe acts: it acknowledges its role, takes a random valid night action (the
+  Every 1.5 s each bot looks at its own view and maybe acts: it taps Ready in the lobby, acknowledges its role, is happy to be "done talking", takes a random valid night action (the
   Mafia pick a victim, the Doctor protects, Cupid links two players…), votes at random (sometimes skip) and now and then chats or
   reacts, only where the server's chat rules let it (day chat, Mafia whisper at night, spectator chat once eliminated). They never
   use hidden state they shouldn't know and they go through the engine's normal validation. See `server/src/dev/bots.ts`.
@@ -199,7 +274,7 @@ answers `{ "dev": false }` and the client shows none of it.
 - Reconnecting: the session token from create/join is kept in localStorage; after a refresh or a locked phone the client sends
   `room:resume` and is back in the same seat with the same role. A dropped player shows as "reconnecting" for 60 s before being
   marked away. Lobby players (and spectators) who stay away 2 more minutes are removed.
-- Host controls: start, settings (including Safe/Normal mode), kick, hand over hosting, password. If the host goes away, hosting
+- Host controls: start (it lights up once everyone has tapped Ready), settings (including Safe/Normal mode, chat filter and pictures), kick, hand over hosting, password, approve or remove pictures, and pause, +30 s and skip to voting during a game. If the host goes away, hosting
   passes to the next player in join order.
 - Rooms with nobody connected are deleted after 10 minutes; lobbies nobody touches for 30 minutes, games after 3 hours.
 
@@ -210,21 +285,29 @@ Your identity always comes from the session the socket joined with, never from t
 
 | Client → server | Payload | Notes |
 | --- | --- | --- |
-| `room:create` | `{ name, avatar, customCode?, password? }` | returns `SessionInfo`; you are the host |
+| `room:create` | `{ name, avatar, customCode?, password?, settings? }` | returns `SessionInfo`; you are the host; `settings` are the host's last ones |
 | `room:peek` | `{ roomCode }` | what the join screen needs: password?, lobby or in game, player count |
 | `room:join` | `{ roomCode, name, avatar, password? }` | a player in the lobby, a spectator once the game has started |
 | `room:resume` | `{ roomCode, sessionToken }` | rejoin after a refresh or reconnect |
+| `room:checkSeat` | `{ roomCode, sessionToken }` | home screen: `{ stage, seatValid }`, changes nothing |
 | `room:leave` | `{}` | removes you from the lobby; mid-game it counts as a disconnect |
 | `player:updateProfile` | `{ name?, avatar? }` | lobby only |
+| `player:setReady` | `{ ready }` | lobby only |
+| `player:removeAvatar` | `{}` | back to your drawn avatar |
 | `host:updateSettings` | `SettingsPatch` | host only, lobby only |
 | `host:start` / `host:restart` | `{}` | host only |
 | `host:kick` / `host:transfer` | `{ playerId }` | host only |
 | `host:setPassword` | `{ password }` | `null` removes it |
+| `host:reviewAvatar` | `{ playerId, approve }` | host only: approve or reject a waiting picture |
+| `host:removeAvatar` | `{ playerId }` | host only, any time |
+| `host:pause` / `host:resume` / `host:addTime` | `{}` | host only, any timed phase (+30 s, up to 15 min left) |
+| `host:skipToVoting` | `{}` | host only, day discussion |
 | `game:ackRole` | `{}` | "I've seen my role" |
 | `game:nightAction` | `{ targetId, secondTargetId? }` | Mafia/Doctor/Detective/Bodyguard/Cupid |
-| `game:vote` | `{ targetId }` | a player id or `"skip"` |
+| `game:vote` | `{ targetId }` | a player id or `"skip"`; can change until the timer ends |
+| `game:skipDiscussion` | `{ skip }` | "Done talking" during the discussion |
 | `chat:send` | `{ text }` | the server picks the channel (see Chat); a `channel` sent by a client is ignored |
-| `chat:react` | `{ reaction }` | `thinking`, `suspicious`, `laughing` or `shocked`; routed exactly like `chat:send` |
+| `chat:react` | `{ reaction }` | `sus`, `agree`, `no_way` or `hmm`; routed exactly like `chat:send` |
 | `narrator:submit` | `{ requestId, text }` | host only: the AI's narration for a `narrator:request`, or `null` if it failed |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
 | `dev:fillBots` / `dev:debugState` | `{ count? }` / `{}` | development only (see above): add bots / the full server state |
@@ -234,6 +317,8 @@ Your identity always comes from the session the socket joined with, never from t
 | `server:hello` | `{ serverNow }` on connect |
 | `game:state` | `{ version, serverNow, room: { code, hasPassword }, view }`; sent only when something you can see changed |
 | `chat:message` / `chat:history` | one message / the history you're allowed to see |
+| `avatar:images` | `{ images: [{ id, dataUrl }] }`, the pictures you may see (members of the room only) |
+| `room:notice` | `{ kind, playerId, name }`: joined, left, kicked, dropped, disconnected, reconnected, host_changed, avatar_* |
 | `narrator:request` | host only: `{ requestId, facts, timeoutMs }`, the public facts to turn into a narration (see AI narrator) |
 | `room:removed` | `{ reason: left | kicked | dropped | room_closed, message }` |
 | `session:replaced` | the same session was opened in another tab; this socket is closed |

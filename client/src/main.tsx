@@ -10,6 +10,7 @@ import "./styles.css";
 import "./game.css";
 import "./theme.css";
 import "./fx/backdrop.css";
+import "./features.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing #root element");

@@ -96,7 +96,7 @@ describe("payload validation", () => {
     expect(parseNightAction({ targetId: "a", secondTargetId: 3 }).ok).toBe(false);
     expect(parseChat({ text: 5 }).ok).toBe(false);
     expect(parseReaction({ reaction: "dancing" }).ok).toBe(false);
-    expect(parseReaction({ reaction: "laughing" })).toEqual({ ok: true, value: { reaction: "laughing" } });
+    expect(parseReaction({ reaction: "no_way" })).toEqual({ ok: true, value: { reaction: "no_way" } });
     // a client can't pick the channel: whatever it sends is dropped
     expect(parseChat({ channel: "mafia", text: "hi" })).toEqual({ ok: true, value: { text: "hi" } });
     expect(parseTimeSync({ clientSentAt: Number.NaN }).ok).toBe(false);

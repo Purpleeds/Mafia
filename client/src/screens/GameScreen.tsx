@@ -1,7 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../art/icons";
 import { ChatPanel } from "../components/ChatPanel";
+import { EventLog, describeLogEntry } from "../components/EventLog";
 import { GameTopBar } from "../components/GameTopBar";
+import { NotesPanel } from "../components/NotesPanel";
+import { PhaseHint } from "../components/PhaseHint";
+import { MyRoleCard } from "../components/PrivateCards";
+import { hintFor } from "../lib/hints";
+import { clearNotes } from "../lib/notes";
+import { usePrefs } from "../lib/prefs";
+import { useWakeLock } from "../lib/wakeLock";
+import { showToast } from "../state/store";
 import { HelpSheet } from "../components/HelpSheet";
 import { LeaveRoomButton } from "../components/LeaveRoomButton";
 import { PlayerList, SpectatorList } from "../components/PlayerList";
@@ -13,7 +22,7 @@ import { NightScreen } from "./game/NightScreen";
 import { RoleRevealScreen } from "./game/RoleRevealScreen";
 import { VoteResultsScreen } from "./game/VoteResultsScreen";
 import { VotingScreen } from "./game/VotingScreen";
-import { myPlayer, nameOf } from "./game/common";
+import { myPlayer } from "./game/common";
 import { wordsFor } from "../lib/wording";
 
 /** Every in-game phase: a status bar, the phase's screen, and a side column (chat and players) where it helps. */
@@ -25,6 +34,9 @@ export function GameScreen({ received }: { received: ReceivedState }) {
   const watching = !!you?.isSpectator || !me;
   const out = !!me && !me.alive;
 
+  const prefs = usePrefs();
+  const roomCode = received.payload.room.code;
+
   // Lets the stylesheet dim the screen at night.
   useEffect(() => {
     document.documentElement.dataset.phase = view.phase;
@@ -32,6 +44,27 @@ export function GameScreen({ received }: { received: ReceivedState }) {
       delete document.documentElement.dataset.phase;
     };
   }, [view.phase]);
+
+  // Phones stay awake for the whole game (where the browser allows it).
+  useWakeLock(prefs.keepAwake && view.phase !== "GAME_OVER");
+
+  // Private notes only last for the game they were written in.
+  useEffect(() => {
+    if (view.phase === "GAME_OVER") clearNotes();
+  }, [view.phase]);
+
+  // The host's pauses and skips appear for everyone as a short message.
+  const seenLog = useRef(view.log.length);
+  useEffect(() => {
+    const fresh = view.log.slice(seenLog.current);
+    seenLog.current = view.log.length;
+    if (you?.isHost) return;
+    for (const entry of fresh) {
+      if (entry.kind === "paused" || entry.kind === "resumed" || entry.kind === "time_added" || entry.kind === "discussion_skipped") {
+        showToast(describeLogEntry(entry, view).text);
+      }
+    }
+  }, [view.log.length]);
 
   // Who just left the game, so their row fades out during the announcement.
   const fadingIds =
@@ -85,20 +118,22 @@ export function GameScreen({ received }: { received: ReceivedState }) {
           {wordsFor(view.settings).outBanner}
         </p>
       ) : null}
-      {you?.loverIds && view.phase !== "GAME_OVER" ? (
-        <p className="info-banner" role="status">
-          <Icon name="heart" />
-          {you.loverIds.includes(you.id)
-            ? `You and ${nameOf(view, you.loverIds.find((id) => id !== you.id) ?? "")} are lovers. If one goes, so does the other.`
-            : `You linked ${nameOf(view, you.loverIds[0])} and ${nameOf(view, you.loverIds[1])}.`}
-        </p>
-      ) : null}
 
       <div className={`game-grid${showSide ? " has-side" : ""}`}>
-        <div className="game-main">{screen}</div>
+        <div className="game-main">
+          <PhaseHint id={hintFor(view.phase)} />
+          {screen}
+          {view.phase !== "ROLE_REVEAL" && view.phase !== "GAME_OVER" ? (
+            <>
+              <MyRoleCard view={view} />
+              <NotesPanel view={view} roomCode={roomCode} />
+              <EventLog view={view} />
+            </>
+          ) : null}
+        </div>
         {showSide ? (
           <aside className="game-side" aria-label="Chat and players">
-            <ChatPanel view={view} />
+            <ChatPanel view={view} roomCode={received.payload.room.code} />
             <section className="card" aria-labelledby="game-players-title">
               <h2 id="game-players-title" className="card-title">
                 Players

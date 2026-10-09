@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import express, { type Express } from "express";
 import { Server } from "socket.io";
+import { AVATAR_UPLOAD_PATH } from "@mafia/shared";
+import { avatarUploadHandler } from "./avatars/upload.js";
 import { DevTools } from "./dev/devTools.js";
 import { createConsoleLogger, type Logger } from "./logger.js";
 import { MemoryRoomStore, type RoomStore } from "./rooms/roomStore.js";
@@ -10,7 +12,7 @@ import { TimeoutScheduler } from "./rooms/scheduler.js";
 import { SocketBroadcaster } from "./socket/broadcaster.js";
 import { attachSocketHandlers } from "./socket/handlers.js";
 import { Presence } from "./socket/presence.js";
-import { DEFAULT_RATE_LIMITS, RateLimiter, type RateLimitConfig } from "./socket/rateLimiter.js";
+import { DEFAULT_RATE_LIMITS, RateLimiter, WindowLimiter, type RateLimitConfig } from "./socket/rateLimiter.js";
 import type { MafiaServer } from "./socket/types.js";
 
 export interface MafiaServerOptions {
@@ -22,6 +24,8 @@ export interface MafiaServerOptions {
   rateLimits?: Partial<RateLimitConfig>;
   disconnectGraceMs?: number;
   sweepIntervalMs?: number;
+  /** Avatar uploads each player may make per minute (3). */
+  avatarUploadsPerMinute?: number;
   trustProxyHops?: number;
   maxSocketsPerIp?: number;
   /**
@@ -101,6 +105,8 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
   const devLimits: Partial<RateLimitConfig> = dev ? { createRoom: { capacity: 100, refillPerSecond: 1 } } : {};
   const limiter = new RateLimiter({ ...DEFAULT_RATE_LIMITS, ...devLimits, ...options.rateLimits }, clock);
   const presence = new Presence();
+  const avatarLimiter = new WindowLimiter(options.avatarUploadsPerMinute ?? 3, 60_000, clock);
+  app.post(AVATAR_UPLOAD_PATH, avatarUploadHandler({ service, logger, limiter, perPlayer: avatarLimiter }));
 
   attachSocketHandlers(io, {
     service,
@@ -117,6 +123,7 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
   const sweep = setInterval(() => {
     void service.sweep();
     limiter.prune(10 * 60_000);
+    avatarLimiter.prune();
   }, options.sweepIntervalMs ?? 60_000);
   sweep.unref();
 

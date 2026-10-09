@@ -2,6 +2,7 @@ import type {
   ChatChannel,
   DeathView,
   GameView,
+  LogEntryView,
   NightActionView,
   PublicPlayerView,
   Role,
@@ -14,8 +15,8 @@ import { canRead, canWrite } from "./chat.js";
 import { gameStats } from "./stats.js";
 import { availableNightAction } from "./night.js";
 import { findPlayer, findSpectator, has } from "./state.js";
-import type { DeathRecord, GameState, PlayerState, SpectatorState } from "./types.js";
-import { validVoteTargets } from "./voting.js";
+import type { DeathRecord, GameState, LogEntry, PlayerState, SpectatorState } from "./types.js";
+import { isVotingComplete, validVoteTargets } from "./voting.js";
 
 /**
  * Builds exactly what `viewerId` is allowed to know. This is the only way game
@@ -47,7 +48,9 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     kicked: p.kicked,
     role: publicRole(p),
     done:
-      state.phase === "ROLE_REVEAL"
+      state.phase === "LOBBY"
+        ? p.ready
+        : state.phase === "ROLE_REVEAL"
         ? p.ackedRole
         : state.phase === "VOTING" && state.voting !== null
           ? has(state.voting.ballots, p.id)
@@ -95,8 +98,25 @@ export function getGameView(state: GameState, viewerId: string): GameView {
       previous,
       validTargetIds: viewer ? validVoteTargets(state, viewer) : [],
       myBallot: viewer ? (state.voting.ballots[viewer.id] ?? null) : null,
+      lastCall: isVotingComplete(state),
     };
   }
+
+  const logView = (entry: LogEntry): LogEntryView => {
+    switch (entry.kind) {
+      case "night":
+        // A save is only public when the host announces saves.
+        return { kind: "night", round: entry.round, deaths: deathViews(entry.deaths), saved: entry.saved && state.settings.announceSaves };
+      case "vote":
+        return { kind: "vote", round: entry.round, outcome: entry.outcome, deaths: deathViews(entry.deaths) };
+      case "revote":
+        return { kind: "revote", round: entry.round, tiedIds: [...entry.tiedIds] };
+      default:
+        return { ...entry };
+    }
+  };
+
+  const talking = state.players.filter((p) => p.alive && p.connected && !p.kicked);
 
   const timeline: TimelineEntry[] = gameOver
     ? state.history.map((h) => ({
@@ -134,6 +154,18 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     winnerIds,
     timeline,
     stats: gameOver ? gameStats(state) : null,
+    gameNumber: state.gameNumber,
+    paused: state.paused ? { remainingMs: state.paused.remainingMs } : null,
+    discussion:
+      state.phase === "DAY_DISCUSSION"
+        ? {
+            doneCount: talking.filter((p) => state.discussionDone.includes(p.id)).length,
+            needed: talking.length,
+            youAreDone: viewer ? state.discussionDone.includes(viewer.id) : false,
+          }
+        : null,
+    log: state.phase === "LOBBY" ? [] : state.log.map(logView),
+    avatarRequests: [],
   };
 }
 
@@ -174,6 +206,7 @@ function buildYou(state: GameState, viewer: PlayerState): YouView {
     id: viewer.id,
     name: viewer.name,
     avatar: { ...viewer.avatar },
+    photo: null,
     role: viewer.role,
     alive: viewer.alive,
     isHost: viewer.id === state.hostId,
@@ -193,6 +226,7 @@ function spectatorYou(state: GameState, spectator: SpectatorState): YouView {
     id: spectator.id,
     name: spectator.name,
     avatar: { ...spectator.avatar },
+    photo: null,
     role: null,
     alive: false,
     isHost: false,

@@ -1,5 +1,6 @@
-import { MAX_PLAYERS } from "@mafia/shared";
+import { MAX_PLAYERS, VOTE_LAST_CALL_SECONDS } from "@mafia/shared";
 import { describe, expect, it } from "vitest";
+import { getGameView } from "./view.js";
 import { AVATAR, Game, R7, gameWithRoles, lobby, runNight } from "./testing/harness.js";
 
 describe("lobby", () => {
@@ -171,15 +172,30 @@ describe("phase machine", () => {
     expect(g.phase).toBe("NIGHT_RESULTS");
   });
 
-  it("ends the vote once every living player has voted, and lets them change their mind", () => {
+  it("gives a last call once every living player has voted, and lets them change their mind until the timer ends", () => {
     const g = gameWithRoles(R7);
     g.advanceTo("VOTING");
+    const fullTime = g.state.phaseEndsAt;
     for (const id of ["p1", "p2", "p3", "p4", "p5", "p6"]) g.vote(id, "skip");
     g.vote("p1", "p7"); // change of mind
     expect(g.state.voting?.ballots["p1"]).toBe("p7");
     expect(g.phase).toBe("VOTING");
+    expect(g.state.phaseEndsAt).toBe(fullTime);
+    expect(getGameView(g.state, "p2").voting?.lastCall).toBe(false);
+
     g.vote("p7", "skip");
+    // Everyone has voted: voting stays open for the last call (10 s), not the full timer.
+    expect(g.phase).toBe("VOTING");
+    expect(g.state.phaseEndsAt).toBe(g.now + VOTE_LAST_CALL_SECONDS * 1000);
+    expect(getGameView(g.state, "p2").voting?.lastCall).toBe(true);
+
+    // A change during the last call still counts, and doesn't extend it.
+    g.now += 4000;
+    g.vote("p2", "p7");
+    expect(g.state.phaseEndsAt).toBe(g.now - 4000 + VOTE_LAST_CALL_SECONDS * 1000);
+    g.endPhase();
     expect(g.phase).toBe("VOTE_RESULTS");
+    expect(g.state.voteReport?.tally).toEqual({ p7: 2, skip: 5 });
   });
 
   it("rejects actions in the wrong phase", () => {

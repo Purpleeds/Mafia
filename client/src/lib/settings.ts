@@ -1,4 +1,27 @@
-import { TIMER_LIMITS, defaultMafiaCount, MIN_PLAYERS, type OptionalRole, type TimerSettings } from "@mafia/shared";
+import {
+  TIMER_LIMITS,
+  defaultMafiaCount,
+  MIN_PLAYERS,
+  type AvatarPolicy,
+  type ChatFilter,
+  type OptionalRole,
+  type TimerSettings,
+} from "@mafia/shared";
+
+export const CHAT_FILTER_INFO: Record<ChatFilter, { label: string; description: string }> = {
+  strict: { label: "Strict", description: "Hides swearing, slurs and rude words, and milder ones like \"damn\" or \"idiot\"." },
+  standard: { label: "Standard", description: "Hides swearing, slurs and sexual words. Milder words get through." },
+  uncensored: {
+    label: "Uncensored",
+    description: "Nothing is hidden. Everyone sees a notice, and each player can still hide strong language on their own screen.",
+  },
+};
+
+export const AVATAR_POLICY_INFO: Record<AvatarPolicy, { label: string; description: string }> = {
+  off: { label: "Off", description: "Everyone uses a drawn avatar." },
+  on: { label: "On", description: "Players can use their own picture. It shows to everyone straight away." },
+  approval: { label: "Host approval", description: "Players can use their own picture once you've approved it." },
+};
 
 export const TIMER_KEYS = [
   "roleRevealSeconds",

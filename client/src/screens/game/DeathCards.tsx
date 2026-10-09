@@ -108,8 +108,6 @@ export function SaveNotice({ view, moment }: { view: GameView; moment: string })
     if (fresh) emitFxOnce(moment, { kind: "save" });
   }, [fresh, moment]);
 
-  const you = view.you;
-  const yourSave = you?.role === "doctor" && you.protectedId ? you.protectedId : null;
   return (
     <section className={`card save-card${fresh ? " is-fresh" : ""}`} aria-labelledby="save-title">
       <div className="save-head">
@@ -125,11 +123,6 @@ export function SaveNotice({ view, moment }: { view: GameView; moment: string })
           </p>
         </div>
       </div>
-      {yourSave ? (
-        <p className="card-lead">
-          Your protection saved {nameOf(view, yourSave)}! <span className="field-hint">Only you can see this.</span>
-        </p>
-      ) : null}
     </section>
   );
 }

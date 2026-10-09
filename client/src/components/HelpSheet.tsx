@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WordingSettings } from "../lib/wording";
 import { AccessibilitySettings } from "./AccessibilitySettings";
 import { FxSettings } from "./FxSettings";
+import { PersonalSettings } from "./PersonalSettings";
 import { SoundPanel } from "./SoundControls";
 import { HowToPlayContent, RoleGuideContent } from "./RulesContent";
 
@@ -66,6 +67,7 @@ export function HelpSheet({ settings, onClose }: { settings: WordingSettings; on
             <RoleGuideContent initialMode={settings.contentMode} settings={settings} lockMode />
           ) : (
             <div className="stack">
+              <PersonalSettings />
               <AccessibilitySettings idPrefix="sheet-a11y" />
               <FxSettings idPrefix="sheet-fx" />
               <SoundPanel idPrefix="sheet-sound" />

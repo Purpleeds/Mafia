@@ -43,6 +43,8 @@ export interface AppState {
   /** Set when the same session was opened in another tab or on another device. */
   replaced: string | null;
   toasts: Toast[];
+  /** Avatar pictures the server sent for this room: picture id -> data URL (always image/webp). */
+  avatarImages: Record<string, string>;
 }
 
 let state: AppState = {
@@ -55,6 +57,7 @@ let state: AppState = {
   notice: null,
   replaced: null,
   toasts: [],
+  avatarImages: {},
 };
 
 const listeners = new Set<() => void>();

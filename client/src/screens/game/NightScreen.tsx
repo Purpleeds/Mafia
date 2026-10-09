@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { type ChatReaction } from "@mafia/shared";
+import { effectiveChatFilter, type ChatReaction } from "@mafia/shared";
 import { Icon } from "../../art/icons";
 import { AvatarBadge } from "../../components/AvatarBadge";
 import { ChatView } from "../../components/ChatView";
@@ -7,6 +7,9 @@ import { ErrorText } from "../../components/ErrorText";
 import { PlayerGrid } from "../../components/PlayerGrid";
 import { NIGHT_KINDS, NIGHT_PROMPT, NIGHT_VERB } from "../../lib/copy";
 import { friendlyError } from "../../lib/errors";
+import { haptic } from "../../lib/haptics";
+import { gameKey, useNotes } from "../../lib/notes";
+import { keyForIndex, usePickShortcuts } from "../../lib/shortcuts";
 import { useAction } from "../../lib/useAction";
 import { call } from "../../net/socket";
 import { useAppState } from "../../state/store";
@@ -85,19 +88,27 @@ function NightPlay({ received }: PhaseProps) {
   };
 
   const confirm = () => {
-    if (picked.length !== need) return;
+    if (picked.length !== need || locked || action.pending || fakePending) return;
     if (real) {
-      void action.run(() => call("game:nightAction", { targetId: picked[0] ?? "", secondTargetId: picked[1] }));
+      void action.run(() => call("game:nightAction", { targetId: picked[0] ?? "", secondTargetId: picked[1] })).then((result) => {
+        if (result.ok) haptic("tap");
+      });
     } else {
-      // Decoy: look busy for a moment, send nothing.
+      // Decoy: look busy for a moment, send nothing. The same buzz as a real choice, so nobody nearby can tell.
       setFakePending(true);
       window.clearTimeout(fakeTimer.current);
       fakeTimer.current = window.setTimeout(() => {
         setFakePending(false);
         setFakeLocked(true);
+        haptic("tap");
       }, 350);
     }
   };
+
+  // The same keys for everyone: numbers pick, Enter locks it in.
+  const pickIds = living.filter((p) => validIds.has(p.id)).map((p) => p.id);
+  usePickShortcuts({ enabled: true, ids: pickIds, onPick: pick, onConfirm: confirm });
+  const notes = useNotes(gameKey(received.payload.room.code, view.gameNumber));
 
   // Mafia teammates' choices appear on the cards they picked.
   const badges: Record<string, ReactNode> = {};
@@ -125,11 +136,8 @@ function NightPlay({ received }: PhaseProps) {
   return (
     <div className="night stack">
       <p className="sleep-line" role="status">
-        <Icon name="moon" size={20} className="sleep-moon" />
-        Sleeping{" "}
-        <span className="zzz" aria-hidden="true">
-          z z z
-        </span>
+        <Icon name="moon" size={18} className="sleep-moon" />
+        The town is asleep
       </p>
       <section className="card night-card">
         <h2 className="card-title">{NIGHT_PROMPT[mode][kind]}</h2>
@@ -143,6 +151,8 @@ function NightPlay({ received }: PhaseProps) {
           selectedIds={picked}
           onPick={pick}
           badges={badges}
+          keyFor={(id) => keyForIndex(pickIds.indexOf(id))}
+          notes={notes}
         />
         <button
           type="button"
@@ -154,14 +164,14 @@ function NightPlay({ received }: PhaseProps) {
           {action.pending || fakePending ? "Locking in…" : buttonLabel}
         </button>
         <ErrorText error={action.error} />
-        <Whisper view={view} real={you?.chat.write.includes("mafia") === true} />
+        <Whisper view={view} roomCode={received.payload.room.code} real={you?.chat.write.includes("mafia") === true} />
       </section>
     </div>
   );
 }
 
 /** A "Whisper" box everybody has at night. It is the Mafia's private chat for them, and a dead end for everyone else. */
-function Whisper({ view, real }: { view: NonNullable<PhaseProps["received"]["payload"]["view"]>; real: boolean }) {
+function Whisper({ view, roomCode, real }: { view: NonNullable<PhaseProps["received"]["payload"]["view"]>; roomCode: string; real: boolean }) {
   const [open, setOpen] = useState(false);
   const all = useAppState((s) => s.chat);
   const [local, setLocal] = useState<{ id: string; senderId: string; senderName: string; text: string }[]>([]);
@@ -195,6 +205,8 @@ function Whisper({ view, real }: { view: NonNullable<PhaseProps["received"]["pay
         <ChatView
           messages={messages}
           youId={you?.id ?? null}
+          roomCode={roomCode}
+          uncensored={effectiveChatFilter(view.settings) === "uncensored"}
           onSend={send}
           onReact={real ? react : null}
           avatarOf={avatarOf}

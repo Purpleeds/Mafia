@@ -1,7 +1,10 @@
 import {
+  ADD_TIME_SECONDS,
+  MAX_PHASE_REMAINING_SECONDS,
   MAX_PLAYERS,
   MAX_SPECTATORS,
   MIN_PLAYERS,
+  VOTE_LAST_CALL_SECONDS,
   defaultMafiaCount,
   isAvatar,
   maxMafiaCount,
@@ -17,7 +20,7 @@ import { buildRoleList, dealRoles } from "./roles.js";
 import { cryptoRng } from "./rng.js";
 import { emptyNight, findMember, findPlayer, findSpectator, resetGameData } from "./state.js";
 import { mergeSettings } from "./settings.js";
-import type { ActionResult, GameAction, GameContext, GameEnv, GameState, PlayerState } from "./types.js";
+import type { ActionResult, GameAction, GameContext, GameEnv, GameState, LogEntry, PlayerState } from "./types.js";
 import { castVote, isVotingComplete, newVoting, resolveVoting } from "./voting.js";
 import { evaluateWinner } from "./win.js";
 
@@ -65,11 +68,24 @@ function dispatch(s: GameState, a: GameAction, env: GameEnv): GameError | null {
       return nightAction(s, a.playerId, a.targetId, a.secondTargetId);
     case "CAST_VOTE":
       return vote(s, a.playerId, a.targetId);
+    case "SET_READY":
+      return setReady(s, a.playerId, a.ready);
+    case "PAUSE":
+      return pause(s, a.playerId, env);
+    case "RESUME":
+      return resume(s, a.playerId, env);
+    case "ADD_TIME":
+      return addTime(s, a.playerId, env);
+    case "SKIP_TO_VOTING":
+      return skipToVoting(s, a.playerId, env);
+    case "SKIP_DISCUSSION":
+      return skipDiscussion(s, a.playerId, a.skip);
     case "NARRATE":
       return narrate(s, a.candidate, a.reason, env);
     case "TICK":
       expireNarration(s, env);
-      if (s.phaseEndsAt !== null && env.now >= s.phaseEndsAt) advance(s, env);
+      // While paused the phase timer is off (phaseEndsAt is null), so only the narrator's deadline counts.
+      if (!s.paused && s.phaseEndsAt !== null && env.now >= s.phaseEndsAt) advance(s, env);
       return null;
     case "RESTART":
       return restart(s, a.playerId);
@@ -151,6 +167,7 @@ function join(s: GameState, playerId: string, rawName: string, avatar: Avatar): 
       connected: true,
       ackedRole: false,
       kicked: false,
+      ready: false,
     });
     if (s.hostId === null) s.hostId = playerId;
     return null;
@@ -255,6 +272,7 @@ function kick(s: GameState, playerId: string, targetId: string, env: GameEnv): G
   target.connected = false;
   target.ackedRole = true;
   forgetChoicesInvolving(s, target);
+  addLog(s, { kind: "kicked", round: s.round, playerId: target.id });
 
   const winner = evaluateWinner(s);
   if (winner) {
@@ -275,6 +293,7 @@ function forgetChoicesInvolving(s: GameState, target: PlayerState): void {
   if (target.role === "bodyguard" || night.guard === id) night.guard = null;
   if (target.role === "cupid" || night.link?.includes(id)) night.link = null;
 
+  s.discussionDone = s.discussionDone.filter((d) => d !== id);
   if (s.voting) {
     delete s.voting.ballots[id];
     for (const [voter, choice] of Object.entries(s.voting.ballots)) if (choice === id) delete s.voting.ballots[voter];
@@ -315,6 +334,7 @@ function startGame(s: GameState, playerId: string, env: GameEnv): GameError | nu
 
   s.players = playing;
   resetGameData(s);
+  s.gameNumber += 1;
   const dealt = dealRoles(
     s.players.map((p) => p.id),
     roles,
@@ -337,7 +357,7 @@ function restart(s: GameState, playerId: string): GameError | null {
   s.spectators = [];
   for (const spectator of waiting) {
     if (s.players.length < MAX_PLAYERS) {
-      s.players.push({ ...spectator, role: null, alive: true, ackedRole: false, kicked: false });
+      s.players.push({ ...spectator, role: null, alive: true, ackedRole: false, kicked: false, ready: false });
     } else {
       s.spectators.push(spectator);
     }
@@ -380,6 +400,85 @@ function vote(s: GameState, playerId: string, targetId: string): GameError | nul
   return castVote(s, player, targetId);
 }
 
+/** Lobby: ready to play (or not). The host's Start button lights up when everyone is. */
+function setReady(s: GameState, playerId: string, ready: boolean): GameError | null {
+  if (s.phase !== "LOBBY") return err("WRONG_PHASE", "You can only get ready in the lobby.");
+  const player = activePlayer(s, playerId);
+  if ("code" in player) return player;
+  player.ready = ready;
+  return null;
+}
+
+/** Day discussion: a living player is done talking. When everyone is, voting starts (see advanceIfReady). */
+function skipDiscussion(s: GameState, playerId: string, skip: boolean): GameError | null {
+  if (s.phase !== "DAY_DISCUSSION") return err("WRONG_PHASE", "You can only skip the discussion while it's on.");
+  const player = activePlayer(s, playerId);
+  if ("code" in player) return player;
+  if (!player.alive) return err("DEAD_PLAYER", "You're out of this game, so you can't vote to skip.");
+  const others = s.discussionDone.filter((id) => id !== playerId);
+  s.discussionDone = skip ? [...others, playerId] : others;
+  return null;
+}
+
+// ------------------------------------------------------------ host's timer controls
+
+const TIMED_PHASES: readonly Phase[] = ["ROLE_REVEAL", "NIGHT", "NIGHT_RESULTS", "DAY_DISCUSSION", "VOTING", "VOTE_RESULTS"];
+
+function addLog(s: GameState, entry: LogEntry): void {
+  s.log.push(entry);
+}
+
+function requireTimedPhase(s: GameState): GameError | null {
+  return TIMED_PHASES.includes(s.phase) ? null : err("WRONG_PHASE", "There's no timer to change right now.");
+}
+
+/** Freezes the timer. Votes and choices still count; the phase just won't end until the host resumes. */
+function pause(s: GameState, playerId: string, env: GameEnv): GameError | null {
+  const problem = requireHost(s, playerId, "pause the game") ?? requireTimedPhase(s);
+  if (problem) return problem;
+  if (s.paused) return null;
+  s.paused = { remainingMs: Math.max(0, (s.phaseEndsAt ?? env.now) - env.now) };
+  s.phaseEndsAt = null;
+  addLog(s, { kind: "paused", round: s.round, phase: s.phase });
+  return null;
+}
+
+/** Starts the timer again with the time that was left (at least a few seconds, so nobody is caught out). */
+function resume(s: GameState, playerId: string, env: GameEnv): GameError | null {
+  const notHost = requireHost(s, playerId, "resume the game");
+  if (notHost) return notHost;
+  if (!s.paused) return null;
+  s.phaseEndsAt = env.now + Math.max(s.paused.remainingMs, 3000);
+  s.paused = null;
+  addLog(s, { kind: "resumed", round: s.round, phase: s.phase });
+  return null;
+}
+
+/** Adds 30 seconds to the current phase (paused or not), up to 15 minutes left. */
+function addTime(s: GameState, playerId: string, env: GameEnv): GameError | null {
+  const problem = requireHost(s, playerId, "add time") ?? requireTimedPhase(s);
+  if (problem) return problem;
+  const extra = ADD_TIME_SECONDS * 1000;
+  const left = s.paused ? s.paused.remainingMs : Math.max(0, (s.phaseEndsAt ?? env.now) - env.now);
+  if (left + extra > MAX_PHASE_REMAINING_SECONDS * 1000) {
+    return err("TIME_LIMIT", `A phase can't have more than ${MAX_PHASE_REMAINING_SECONDS / 60} minutes left.`);
+  }
+  if (s.paused) s.paused.remainingMs += extra;
+  else s.phaseEndsAt = env.now + left + extra;
+  addLog(s, { kind: "time_added", round: s.round, phase: s.phase });
+  return null;
+}
+
+/** Ends the day discussion now and opens voting. */
+function skipToVoting(s: GameState, playerId: string, env: GameEnv): GameError | null {
+  const notHost = requireHost(s, playerId, "skip to voting");
+  if (notHost) return notHost;
+  if (s.phase !== "DAY_DISCUSSION") return err("WRONG_PHASE", "You can only skip to voting during the discussion.");
+  addLog(s, { kind: "discussion_skipped", round: s.round, by: "host" });
+  advance(s, env);
+  return null;
+}
+
 // ------------------------------------------------------------ phase machine
 
 function phaseSeconds(s: GameState, phase: Phase): number | null {
@@ -405,6 +504,8 @@ function phaseSeconds(s: GameState, phase: Phase): number | null {
 
 function enterPhase(s: GameState, phase: Phase, env: GameEnv): void {
   s.phase = phase;
+  s.paused = null;
+  s.discussionDone = [];
   const seconds = phaseSeconds(s, phase);
   s.phaseEndsAt = seconds === null ? null : env.now + seconds * 1000;
 }
@@ -437,6 +538,9 @@ function advance(s: GameState, env: GameEnv): void {
     case "NIGHT":
       resolveNight(s, env);
       enterPhase(s, "NIGHT_RESULTS", env);
+      if (s.nightReport) {
+        addLog(s, { kind: "night", round: s.round, deaths: [...s.nightReport.deaths], saved: s.nightReport.saved });
+      }
       beginNarration(s, "night", env);
       break;
     case "NIGHT_RESULTS":
@@ -451,7 +555,12 @@ function advance(s: GameState, env: GameEnv): void {
       // A tie with the revote rule stays in VOTING (round 2); otherwise show the result.
       if (resolveVoting(s, env)) {
         enterPhase(s, "VOTE_RESULTS", env);
+        if (s.voteReport) {
+          addLog(s, { kind: "vote", round: s.round, outcome: s.voteReport.outcome, deaths: [...s.voteReport.deaths] });
+        }
         beginNarration(s, "vote", env);
+      } else if (s.voting?.previous) {
+        addLog(s, { kind: "revote", round: s.round, tiedIds: s.voting.previous.tiedOptions });
       }
       break;
     case "VOTE_RESULTS":
@@ -464,8 +573,9 @@ function advance(s: GameState, env: GameEnv): void {
   }
 }
 
-/** Ends the phase early once everyone who is required to act has acted. */
+/** Ends the phase early once everyone who is required to act has acted (never while paused). */
 function advanceIfReady(s: GameState, env: GameEnv): void {
+  if (s.paused) return;
   switch (s.phase) {
     case "ROLE_REVEAL": {
       const here = s.players.filter((p) => p.connected);
@@ -475,9 +585,22 @@ function advanceIfReady(s: GameState, env: GameEnv): void {
     case "NIGHT":
       if (isNightComplete(s)) advance(s, env);
       break;
-    case "VOTING":
-      if (isVotingComplete(s)) advance(s, env);
+    case "DAY_DISCUSSION": {
+      const talking = s.players.filter((p) => p.alive && p.connected && !p.kicked);
+      if (talking.length > 0 && talking.every((p) => s.discussionDone.includes(p.id))) {
+        addLog(s, { kind: "discussion_skipped", round: s.round, by: "players" });
+        advance(s, env);
+      }
       break;
+    }
+    case "VOTING": {
+      // Everyone has voted: last call. Voting stays open a few more seconds (or until the timer,
+      // if that is sooner), so votes can still change until the timer ends.
+      if (!isVotingComplete(s)) break;
+      const lastCall = env.now + VOTE_LAST_CALL_SECONDS * 1000;
+      if (s.phaseEndsAt !== null && s.phaseEndsAt > lastCall) s.phaseEndsAt = lastCall;
+      break;
+    }
     default:
       break;
   }

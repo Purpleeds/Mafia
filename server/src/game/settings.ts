@@ -1,9 +1,12 @@
 import {
+  AVATAR_POLICIES,
+  CHAT_FILTERS,
   CONTENT_MODES,
   MAX_MAFIA_SETTING,
   OPTIONAL_ROLES,
   TIE_RULES,
   TIMER_LIMITS,
+  modeDefaults,
   type GameSettings,
   type OptionalRole,
   type TimerSettings,
@@ -51,9 +54,13 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
         if (typeof value !== "boolean") return bad("announceSaves must be true or false.");
         next.announceSaves = value;
         break;
-      case "profanityFilter":
-        if (typeof value !== "boolean") return bad("profanityFilter must be true or false.");
-        next.profanityFilter = value;
+      case "chatFilter":
+        if (!isOneOf(CHAT_FILTERS, value)) return bad("The chat filter must be strict, standard or uncensored.");
+        next.chatFilter = value;
+        break;
+      case "customAvatars":
+        if (!isOneOf(AVATAR_POLICIES, value)) return bad("Custom avatars must be off, on or approval.");
+        next.customAvatars = value;
         break;
       case "sneakyGang":
         if (typeof value !== "boolean") return bad("sneakyGang must be true or false.");
@@ -100,13 +107,21 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
     }
   }
 
-  // Safe Mode always filters chat. Asking for it off is refused; a stored "off" from
-  // Normal Mode is simply switched back on when the host moves to Safe Mode.
+  // Switching mode brings that mode's defaults (Safe: strict chat, pictures approved by the host;
+  // Normal: standard chat, pictures shown straight away), unless the same change sets them too.
+  if (next.contentMode !== current.contentMode) {
+    const defaults = modeDefaults(next.contentMode);
+    if (!Object.hasOwn(patch, "chatFilter")) next.chatFilter = defaults.chatFilter;
+    if (!Object.hasOwn(patch, "customAvatars")) next.customAvatars = defaults.customAvatars;
+  }
+
+  // Safe Mode's chat is always strict. Asking for anything else is refused, however the
+  // request is sent; the stored value is kept strict so nothing can switch it on later.
   if (next.contentMode === "safe") {
-    if (Object.hasOwn(patch, "profanityFilter") && patch.profanityFilter === false) {
-      return bad("The chat filter is always on in Safe Mode.");
+    if (Object.hasOwn(patch, "chatFilter") && patch.chatFilter !== "strict") {
+      return bad("Chat is always strictly filtered in Safe Mode. Uncensored chat is a Normal Mode option.");
     }
-    next.profanityFilter = true;
+    next.chatFilter = "strict";
   }
   return { ok: true, settings: next };
 }

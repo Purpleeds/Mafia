@@ -68,7 +68,7 @@ export function statLines(stats: GameStatsView, view: Pick<GameView, "players" |
     const each = playerIds.length > 1 ? " each" : "";
     lines.push({
       key: "suspicious",
-      icon: "suspicious",
+      icon: "eye",
       title: "Most suspicious voter",
       playerIds,
       text: `${names(playerIds)} voted against innocent players ${innocentVotes} of ${plural(totalVotes, "time", "times")}${each}.`,
@@ -93,7 +93,7 @@ export function GameStats({ view }: { view: GameView }) {
   return (
     <section className="card stats-card" aria-labelledby="stats-title">
       <h2 id="stats-title" className="card-title">
-        <Icon name="sparkle" size={20} /> Highlights
+        Highlights
       </h2>
       <ul className="stats-list">
         {lines.map((line) => (

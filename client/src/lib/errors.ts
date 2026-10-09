@@ -29,9 +29,39 @@ const FRIENDLY: Partial<Record<ErrorCode | ClientErrorCode, string>> = {
   WRONG_PHASE: "That can't be done right now.",
   NOT_IN_ROOM: "You're not in this room any more.",
   SESSION_INVALID: "Your seat in this room has expired.",
+  BAD_REQUEST: "Something about that didn't work. Try again.",
+  CHAT_LINK: "Links can't be shared in chat.",
+  CHAT_NOT_ALLOWED: "You can't send messages right now.",
+  AVATAR_INVALID: "That picture can't be used. Pick a PNG, JPG or WebP picture.",
+  AVATAR_TOO_LARGE: "Pictures can be at most 2 MB.",
+  AVATARS_OFF: "The host has turned off custom pictures in this room.",
+  TIME_LIMIT: "That's as much time as a phase can have.",
+  INVALID_TARGET: "You can't pick that player.",
+  DEAD_PLAYER: "You're out of this game, so you can't do that.",
+  SPECTATOR: "You're watching this game. You'll play in the next one.",
+  NOT_IN_GAME: "You're not in this game.",
+  INVALID_AVATAR: "Pick an avatar colour and look.",
+  ALREADY_JOINED: "You're already in this room.",
+  REPEAT_PROTECTION: "You can't protect the same player two nights in a row.",
+  NO_ABILITY: "You don't have a night action.",
 };
 
-/** A message for people, preferring our wording over the server's for known codes. */
+/**
+ * Codes where the server's own words are better than ours: they say exactly
+ * what to change (a nickname rule, a password length, a picture problem).
+ */
+const SERVER_WORDS = new Set<string>(["INVALID_NAME", "AVATAR_INVALID", "BAD_REQUEST", "INVALID_SETTINGS", "TIME_LIMIT"]);
+
+/** Server messages that read like they were meant for developers, never shown as they are. */
+const TECHNICAL = /\b(?:payload|expected|object|must be a|string|boolean|undefined|null|json|id)\b|[{}\[\]]/i;
+
+/**
+ * A message for people. Our wording for known codes; the server's own words
+ * when they say exactly what to fix (and aren't technical); otherwise a plain
+ * "Something went wrong".
+ */
 export function friendlyError(error: CallError): string {
-  return FRIENDLY[error.code] ?? (error.message || "Something went wrong. Try again.");
+  const message = error.message?.trim() ?? "";
+  if (SERVER_WORDS.has(error.code) && message && !TECHNICAL.test(message)) return message;
+  return FRIENDLY[error.code] ?? (message && !TECHNICAL.test(message) ? message : "Something went wrong. Try again.");
 }

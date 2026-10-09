@@ -3,16 +3,21 @@
  * keeps you in your room across refreshes, locked phones and flaky networks.
  */
 import type {
+  AvatarImagesPayload,
   CreateRoomPayload,
   GameStatePayload,
   JoinRoomPayload,
   RemovedPayload,
+  RoomNoticePayload,
   SessionInfo,
 } from "@mafia/shared";
+import { haptic } from "../lib/haptics";
+import { noticeText } from "../lib/notices";
+import { markDeclined, maybeUploadSavedPhoto, resetPhotoUpload } from "../lib/photo";
 import { friendlyError } from "../lib/errors";
 import { handleNarratorRequest } from "../narrator/host";
 import { goHome, goToRoom, parseRoute } from "../lib/router";
-import { forgetSession, loadSession, saveProfile, saveSession } from "../lib/storage";
+import { forgetSession, loadHostSettings, loadSession, saveHostSettings, saveProfile, saveSession } from "../lib/storage";
 import { call, socket, type CallResult } from "../net/socket";
 import { getState, setState, showToast } from "./store";
 
@@ -32,7 +37,8 @@ let initialized = false;
 
 function clearRoomData(): void {
   heldVersion = 0;
-  setState({ game: null, chat: [] });
+  resetPhotoUpload();
+  setState({ game: null, chat: [], avatarImages: {} });
 }
 
 /** Makes `info` the active session (after create, join or resume). */
@@ -170,7 +176,8 @@ export function abandonSavedSession(code: string): void {
 // ---------------------------------------------------------------- joining
 
 export async function createRoom(payload: CreateRoomPayload): Promise<CallResult<SessionInfo>> {
-  const result = await call("room:create", payload);
+  const settings = loadHostSettings();
+  const result = await call("room:create", settings ? { ...payload, settings } : payload);
   if (result.ok) {
     clearRoomData();
     adoptSession(result.data);
@@ -220,7 +227,37 @@ function onGameState(payload: GameStatePayload): void {
   if (!session || payload.room.code !== session.roomCode) return;
   if (payload.version < heldVersion) return;
   heldVersion = payload.version;
+  const before = getState().game?.payload;
   setState({ game: { payload, receivedAt: performance.now() } });
+  // A new phase buzzes every phone in the room at the same moment, whatever the player's role.
+  if (before && before.room.code === payload.room.code && before.view.phase !== payload.view.phase) haptic("phase");
+  const { view } = payload;
+  // The host's settings are remembered for the next room they make.
+  if (view.you?.isHost && view.phase === "LOBBY") saveHostSettings(view.settings);
+  // A picture you saved on this device goes up once you're in a room that allows pictures.
+  void maybeUploadSavedPhoto(session, view);
+}
+
+/** Only pictures the server encoded itself are kept (the server always sends image/webp data URLs). */
+function onAvatarImages(payload: AvatarImagesPayload): void {
+  if (!getState().session) return;
+  const images = { ...getState().avatarImages };
+  for (const image of payload.images) {
+    if (typeof image.id === "string" && typeof image.dataUrl === "string" && image.dataUrl.startsWith("data:image/webp;base64,")) {
+      images[image.id] = image.dataUrl;
+    }
+  }
+  setState({ avatarImages: images });
+}
+
+function onNotice(payload: RoomNoticePayload): void {
+  const session = getState().session;
+  if (!session) return;
+  if ((payload.kind === "avatar_rejected" || payload.kind === "avatar_removed") && payload.playerId === session.playerId) {
+    markDeclined(session);
+  }
+  const text = noticeText(payload, session.playerId);
+  if (text) showToast(text, 5000);
 }
 
 function onRemoved(payload: RemovedPayload): void {
@@ -299,6 +336,8 @@ export function initConnection(): void {
   });
 
   socket.on("room:removed", onRemoved);
+  socket.on("avatar:images", onAvatarImages);
+  socket.on("room:notice", onNotice);
 
   // Only the host's browser is ever asked: write the narration with Puter's AI and send it back.
   socket.on("narrator:request", (request) => {

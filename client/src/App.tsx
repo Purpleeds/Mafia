@@ -3,6 +3,7 @@ import type { ContentMode, Phase, Winner } from "@mafia/shared";
 import { WakingScreen } from "./components/WakingScreen";
 import { DebugPanel } from "./components/DevTools";
 import { ConnectionBanner } from "./components/ConnectionBanner";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ReplacedOverlay } from "./components/ReplacedOverlay";
 import { Toasts } from "./components/Toasts";
 import { Backdrop } from "./fx/Backdrop";
@@ -43,6 +44,7 @@ export function App() {
       <Backdrop />
       <ConnectionBanner />
       <main className="app-main">
+        <ErrorBoundary key={pathname}>
         {roomCode ? (
           <RoomRoute key={roomCode} code={roomCode} />
         ) : route.name === "how-to-play" ? (
@@ -52,6 +54,7 @@ export function App() {
         ) : (
           <HomeScreen />
         )}
+        </ErrorBoundary>
       </main>
       <WakingScreen />
       <DebugPanel />

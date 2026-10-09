@@ -2,7 +2,8 @@
  * Game vocabulary shared by the server and the client: roles, phases, settings
  * and the per-player "view" the server is allowed to send.
  */
-import type { Avatar } from "./identity.js";
+import type { AvatarView } from "./identity.js";
+import type { ChatFilter } from "./profanity.js";
 
 // ---------------------------------------------------------------- roles
 
@@ -94,10 +95,13 @@ export interface GameSettings {
   /** Tell everyone when the Doctor saved someone (without saying who). */
   announceSaves: boolean;
   /**
-   * Mask rude words in chat. Always on in Safe Mode, whatever is stored here
-   * (see isChatFiltered); in Normal Mode the host may turn it off.
+   * How much the chat filter hides (see CHAT_FILTERS). Safe Mode is always
+   * "strict", whatever is stored here (see effectiveChatFilter); in Normal Mode
+   * the host picks, and only Normal Mode may be "uncensored".
    */
-  profanityFilter: boolean;
+  chatFilter: ChatFilter;
+  /** Whether players may use their own pictures as avatars, and whether the host approves each one first. */
+  customAvatars: AvatarPolicy;
   /** Safe Mode only: call the Mafia "the Sneaky Gang" (see gangName). */
   sneakyGang: boolean;
   /**
@@ -116,7 +120,8 @@ export interface SettingsPatch {
   revealRoleOnDeath?: boolean;
   showVotes?: boolean;
   announceSaves?: boolean;
-  profanityFilter?: boolean;
+  chatFilter?: ChatFilter;
+  customAvatars?: AvatarPolicy;
   sneakyGang?: boolean;
   aiNarrator?: boolean;
 }
@@ -128,9 +133,22 @@ export function gangName(settings: Pick<GameSettings, "contentMode" | "sneakyGan
   return settings.contentMode === "safe" && settings.sneakyGang ? "Sneaky Gang" : "Mafia";
 }
 
-/** Whether chat is filtered: always in Safe Mode, otherwise the host's choice. */
-export function isChatFiltered(settings: Pick<GameSettings, "contentMode" | "profanityFilter">): boolean {
-  return settings.contentMode === "safe" || settings.profanityFilter;
+/** Custom avatar pictures: not allowed, allowed, or allowed once the host has approved each one. */
+export const AVATAR_POLICIES = ["off", "on", "approval"] as const;
+export type AvatarPolicy = (typeof AVATAR_POLICIES)[number];
+
+/** The chat filter that applies: always "strict" in Safe Mode, otherwise the host's choice. */
+export function effectiveChatFilter(settings: Pick<GameSettings, "contentMode" | "chatFilter">): ChatFilter {
+  return settings.contentMode === "safe" ? "strict" : settings.chatFilter;
+}
+
+/**
+ * The settings a content mode starts with when the host switches to it: Safe
+ * Mode filters chat strictly and has the host approve pictures; Normal Mode
+ * uses the standard filter and shows pictures straight away.
+ */
+export function modeDefaults(mode: ContentMode): Pick<GameSettings, "chatFilter" | "customAvatars"> {
+  return mode === "safe" ? { chatFilter: "strict", customAvatars: "approval" } : { chatFilter: "standard", customAvatars: "on" };
 }
 
 export const TIMER_LIMITS: Record<keyof TimerSettings, { min: number; max: number }> = {
@@ -161,7 +179,7 @@ export function defaultSettings(): GameSettings {
     revealRoleOnDeath: true,
     showVotes: true,
     announceSaves: true,
-    profanityFilter: true,
+    ...modeDefaults("safe"),
     sneakyGang: false,
     aiNarrator: false,
   };
@@ -186,7 +204,8 @@ export type GameErrorCode =
   | "NO_ABILITY"
   | "INVALID_TARGET"
   | "REPEAT_PROTECTION"
-  | "SPECTATOR";
+  | "SPECTATOR"
+  | "TIME_LIMIT";
 
 export interface GameError {
   code: GameErrorCode;
@@ -237,6 +256,16 @@ export interface VoteReportView extends VoteRoundSummaryView {
   deaths: DeathView[];
 }
 
+/** Pausing, extra time and skipping the discussion: what a host may add, at most. */
+export const ADD_TIME_SECONDS = 30;
+/** A phase can't be stretched beyond this much time left. */
+export const MAX_PHASE_REMAINING_SECONDS = 15 * 60;
+/**
+ * Once everyone has voted, voting stays open this much longer (or until the
+ * timer, if that is sooner), so anyone can still change their mind.
+ */
+export const VOTE_LAST_CALL_SECONDS = 10;
+
 export interface LiveVotes {
   /** option (player id or SKIP) -> ballots cast so far. Always shown. */
   tally: Record<string, number>;
@@ -254,6 +283,8 @@ export interface VotingView {
   previous: (VoteRoundSummaryView & { tiedOptions: string[] }) | null;
   validTargetIds: string[];
   myBallot: string | null;
+  /** Everyone has voted: votes can still change until the (shortened) timer ends. */
+  lastCall: boolean;
 }
 
 export interface NightActionView {
@@ -306,16 +337,45 @@ export interface GameStatsView {
   votesSecret: boolean;
 }
 
+/**
+ * One line of the "What's happened so far" log during a game. Public events
+ * only, the same for everyone: who left the game and how, vote results, and
+ * the host's pauses and skips.
+ */
+export type LogEntryView =
+  | { kind: "night"; round: number; deaths: DeathView[]; saved: boolean }
+  | { kind: "vote"; round: number; outcome: VoteOutcome; deaths: DeathView[] }
+  | { kind: "revote"; round: number; tiedIds: string[] }
+  | { kind: "kicked"; round: number; playerId: string }
+  | { kind: "paused" | "resumed" | "time_added"; round: number; phase: Phase }
+  | { kind: "discussion_skipped"; round: number; by: "host" | "players" };
+
+/** Day discussion: how many players are done talking (when everyone is, voting starts). */
+export interface DiscussionView {
+  doneCount: number;
+  /** Living, connected players: all of them must be done for voting to start early. */
+  needed: number;
+  youAreDone: boolean;
+}
+
 export interface TimelineEntry {
   round: number;
   night: TimelineNight;
   vote: { outcome: VoteOutcome; tally: Record<string, number>; deaths: DeathView[] } | null;
 }
 
+/** Your own uploaded picture and where it stands. Pending pictures are seen only by you and the host. */
+export interface YourPhotoView {
+  id: string;
+  status: "pending" | "approved";
+}
+
 export interface YouView {
   id: string;
   name: string;
-  avatar: Avatar;
+  avatar: AvatarView;
+  /** Your uploaded picture, if any (shown as `avatar.photo` to everyone once approved). */
+  photo: YourPhotoView | null;
   role: Role | null;
   alive: boolean;
   isHost: boolean;
@@ -342,7 +402,7 @@ export type ConnectionStatus = "online" | "reconnecting" | "offline";
 export interface PublicPlayerView {
   id: string;
   name: string;
-  avatar: Avatar;
+  avatar: AvatarView;
   alive: boolean;
   /** The game counts this player as present (online or reconnecting). */
   connected: boolean;
@@ -352,14 +412,14 @@ export interface PublicPlayerView {
   kicked: boolean;
   /** null unless public (reveal-on-death, or game over). */
   role: Role | null;
-  /** Role-reveal: acknowledged. Voting: has voted. Never used at night. */
+  /** Lobby: ready to play. Role-reveal: acknowledged. Voting: has voted. Never used at night. */
   done: boolean;
 }
 
 export interface SpectatorView {
   id: string;
   name: string;
-  avatar: Avatar;
+  avatar: AvatarView;
   connected: boolean;
   connection: ConnectionStatus;
 }
@@ -388,4 +448,14 @@ export interface GameView {
   timeline: TimelineEntry[];
   /** End-of-game highlights; null until the game is over. */
   stats: GameStatsView | null;
+  /** Counts the games played in this room (1 for the first); private notes are kept per game. */
+  gameNumber: number;
+  /** Set while the host has paused the game: the timer is frozen with this much left. */
+  paused: { remainingMs: number } | null;
+  /** Day discussion only. */
+  discussion: DiscussionView | null;
+  /** Public events so far in this game (empty in the lobby). */
+  log: LogEntryView[];
+  /** Host only: pictures waiting for approval (empty for everyone else). */
+  avatarRequests: { playerId: string; photo: string }[];
 }

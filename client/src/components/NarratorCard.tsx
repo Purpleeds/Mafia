@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { ContentMode } from "@mafia/shared";
-import { Icon } from "../art/icons";
 import { speakNarration, stopSpeaking } from "../narrator/speech";
 import { typingSpeed } from "../screens/game/common";
 import type { ReceivedState } from "../state/store";
@@ -42,9 +41,7 @@ function NarrationText({ received, text, source, mode, onDone }: NarrationTextPr
     <>
       <Typewriter text={text} speed={speed} onDone={onDone} />
       {source === "ai" ? (
-        <p className="field-hint narrator-credit">
-          <Icon name="sparkle" size={13} /> Written by the AI narrator
-        </p>
+        <p className="field-hint narrator-credit">Written by the AI narrator</p>
       ) : null}
     </>
   );
@@ -67,10 +64,7 @@ export function NarratorCard({ received, kind, onDone }: NarratorCardProps) {
   const text = narration?.status === "ready" ? narration.text : null;
   return (
     <section className="card narrator" aria-label="The narrator">
-      <p className="eyebrow">
-        <Icon name="mic" size={15} />
-        The narrator
-      </p>
+      <p className="eyebrow">The narrator</p>
       {text ? (
         <NarrationText
           key={`${narration?.round}:${text}`}

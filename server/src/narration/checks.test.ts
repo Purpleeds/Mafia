@@ -1,4 +1,4 @@
-import { NARRATION_MAX_LENGTH, type ContentMode } from "@mafia/shared";
+import { NARRATION_MAX_LENGTH, NARRATOR_SYSTEM_PROMPT, hasEmoji, type ContentMode } from "@mafia/shared";
 import { describe, expect, it } from "vitest";
 import { checkNarration, tidyNarration, type NarrationCheckContext } from "./checks.js";
 
@@ -74,6 +74,34 @@ describe("narration checks: length and shape", () => {
     expect(tidyNarration("Say \"hi\" to Ana, then \"bye\"")).toBe('Say "hi" to Ana, then "bye"');
     const result = checkNarration('"Ana was sent home by the Mafia."', ctx("safe"));
     expect(result).toEqual({ ok: true, text: "Ana was sent home by the Mafia." });
+  });
+
+  it("strips every kind of emoji and text face before anyone sees the narration", () => {
+    const cases: Array<[string, string]> = [
+      ["🌙 Ana was sent home 👋🏽.", "Ana was sent home."],
+      ["Ana went home 👨‍👩‍👧 with the family.", "Ana went home with the family."],
+      ["Ana flew home 🇫🇷 and waved 1️⃣ time.", "Ana flew home and waved 1 time."],
+      ["Ana was sent home :) Sleep tight ;-) <3", "Ana was sent home Sleep tight"],
+      ["Ana was sent home xD ^_^", "Ana was sent home"],
+      ["❤️ Ana ❤ was sent home ☀︎", "Ana was sent home"],
+    ];
+    for (const [raw, clean] of cases) {
+      expect(tidyNarration(raw), raw).toBe(clean);
+      expect(hasEmoji(tidyNarration(raw)), raw).toBe(false);
+    }
+    const result = checkNarration("Ana was sent home by the Mafia 🕵️‍♂️🔪.", ctx("normal"));
+    expect(result).toEqual({ ok: true, text: "Ana was sent home by the Mafia." });
+  });
+
+  it("keeps ordinary punctuation and times that look a little like faces", () => {
+    expect(tidyNarration("At 10:30 the town woke (again). Ana: gone!")).toBe("At 10:30 the town woke (again). Ana: gone!");
+  });
+
+  it("tells the AI in both modes never to use emojis", () => {
+    for (const mode of ["safe", "normal"] as const) {
+      expect(NARRATOR_SYSTEM_PROMPT[mode]).toMatch(/Never use emojis, emoticons/);
+      expect(NARRATOR_SYSTEM_PROMPT[mode]).toMatch(/no emojis/);
+    }
   });
 });
 

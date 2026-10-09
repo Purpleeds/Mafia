@@ -14,6 +14,7 @@ export type RateCategory =
   | "gameAction"
   | "hostAction"
   | "timeSync"
+  | "avatarIp"
   | "anyEvent";
 
 export type RateLimitConfig = Record<RateCategory, BucketConfig>;
@@ -43,6 +44,8 @@ export const DEFAULT_RATE_LIMITS: RateLimitConfig = {
    */
   hostAction: { capacity: 30, refillPerSecond: 2 },
   timeSync: { capacity: 10, refillPerSecond: 0.5 },
+  /** Avatar uploads per IP, before the session is even checked (a party on one Wi-Fi fits easily). */
+  avatarIp: { capacity: 30, refillPerSecond: 0.5 },
   /** Every incoming event, per connection: a cap on raw flooding. */
   anyEvent: { capacity: 40, refillPerSecond: 10 },
 };
@@ -100,5 +103,38 @@ export class RateLimiter {
 
   get ownerCount(): number {
     return this.owners.size;
+  }
+}
+
+/**
+ * At most `max` events per key in any `windowMs` (a sliding window, so "3 a
+ * minute" means exactly that). Used for avatar uploads, per player.
+ */
+export class WindowLimiter {
+  private readonly hits = new Map<string, number[]>();
+
+  constructor(
+    private readonly max: number,
+    private readonly windowMs: number,
+    private readonly clock: () => number = Date.now,
+  ) {}
+
+  /** Counts one event; false (and not counted) if the key already had `max` in the window. */
+  consume(key: string): boolean {
+    const now = this.clock();
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (recent.length >= this.max) {
+      this.hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.hits.set(key, recent);
+    return true;
+  }
+
+  /** Forgets keys with nothing in the window. */
+  prune(): void {
+    const now = this.clock();
+    for (const [key, times] of this.hits) if (times.every((t) => now - t >= this.windowMs)) this.hits.delete(key);
   }
 }

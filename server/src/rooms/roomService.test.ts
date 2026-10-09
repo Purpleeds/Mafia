@@ -332,11 +332,11 @@ describe("chat routing and reactions", () => {
 
   it("sends reactions the same way, and they never carry text", async () => {
     const { env, room, dead, living, mafia } = await dayRoom();
-    must(await env.service.sendReaction(room.code, living, "suspicious"));
-    expect(env.broadcaster.chatsTo(mafia).at(-1)).toMatchObject({ channel: "public", reaction: "suspicious", text: "" });
-    must(await env.service.sendReaction(room.code, dead, "laughing"));
-    expect(env.broadcaster.chatsTo(living).some((m) => m.reaction === "laughing")).toBe(false);
-    expect(env.broadcaster.chatsTo(dead).at(-1)).toMatchObject({ channel: "graveyard", reaction: "laughing" });
+    must(await env.service.sendReaction(room.code, living, "sus"));
+    expect(env.broadcaster.chatsTo(mafia).at(-1)).toMatchObject({ channel: "public", reaction: "sus", text: "" });
+    must(await env.service.sendReaction(room.code, dead, "agree"));
+    expect(env.broadcaster.chatsTo(living).some((m) => m.reaction === "agree")).toBe(false);
+    expect(env.broadcaster.chatsTo(dead).at(-1)).toMatchObject({ channel: "graveyard", reaction: "agree" });
     const bad = await env.service.sendReaction(room.code, living, "dancing" as never);
     expect(!bad.ok && bad.error.code).toBe("BAD_REQUEST");
   });
@@ -347,14 +347,14 @@ describe("chat routing and reactions", () => {
     const [m1, m2] = room.withRole("mafia") as [string, string];
     const [villager] = room.withRole("villager") as [string];
     for (const id of [m1, villager]) {
-      const early = await env.service.sendReaction(room.code, id, "thinking"); // role reveal
+      const early = await env.service.sendReaction(room.code, id, "hmm"); // role reveal
       expect(!early.ok && early.error.code).toBe("CHAT_NOT_ALLOWED");
     }
     await env.fireTimer(room.code); // NIGHT
-    const shut = await env.service.sendReaction(room.code, villager, "thinking");
+    const shut = await env.service.sendReaction(room.code, villager, "hmm");
     expect(!shut.ok && shut.error.code).toBe("CHAT_NOT_ALLOWED");
-    must(await env.service.sendReaction(room.code, m1, "thinking"));
-    expect(env.broadcaster.chatsTo(m2).at(-1)).toMatchObject({ channel: "mafia", reaction: "thinking" });
+    must(await env.service.sendReaction(room.code, m1, "hmm"));
+    expect(env.broadcaster.chatsTo(m2).at(-1)).toMatchObject({ channel: "mafia", reaction: "hmm" });
     expect(env.broadcaster.chatsTo(villager)).toEqual([]);
   });
 

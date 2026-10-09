@@ -4,6 +4,7 @@ import { PHASE_LABEL } from "../lib/labels";
 import type { ReceivedState } from "../state/store";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { Countdown } from "./Countdown";
+import { HostControls } from "./HostControls";
 import { ModeBadge } from "./ModeBadge";
 import { SoundButton } from "./SoundControls";
 
@@ -27,9 +28,15 @@ export function GameTopBar({ received, onHelp }: { received: ReceivedState; onHe
       <div className="top-bar-row top-bar-phase">
         <h1 className="phase-name">{PHASE_LABEL[view.phase]}</h1>
         {view.round > 0 ? <span className="tag">Round {view.round}</span> : null}
-        <Countdown endsAt={view.phaseEndsAt} serverNow={serverNow} receivedAt={received.receivedAt} />
+        <Countdown
+          endsAt={view.phaseEndsAt}
+          pausedMs={view.paused?.remainingMs ?? null}
+          serverNow={serverNow}
+          receivedAt={received.receivedAt}
+        />
       </div>
       <span className="sr-only">{MODE_INFO[view.settings.contentMode].blurb}</span>
+      <HostControls view={view} />
     </header>
   );
 }

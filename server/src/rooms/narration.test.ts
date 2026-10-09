@@ -275,7 +275,7 @@ describe("content modes in a room", () => {
     const env = makeService();
     const room = await startedRoom(env, { sneakyGang: true });
     for (const id of room.ids) {
-      expect(env.broadcaster.lastState(id).view.settings).toMatchObject({ contentMode: "safe", sneakyGang: true, profanityFilter: true });
+      expect(env.broadcaster.lastState(id).view.settings).toMatchObject({ contentMode: "safe", sneakyGang: true, chatFilter: "strict" });
     }
   });
 });
@@ -295,30 +295,62 @@ describe("the chat filter", () => {
     return received[received.length - 1]?.text;
   };
 
-  it("masks rude words in Safe Mode, where it can't be turned off", async () => {
+  const MILD = "damn it, you idiot";
+  const STRONG = "that was shit luck";
+
+  it("is always strict in Safe Mode: strong and mild words are hidden, and it can't be loosened", async () => {
     const env = makeService();
     const room = await lobbyOf(env);
-    expect(await say(env, room, "that was shit luck")).toBe("that was **** luck");
-    expect(await say(env, room, "you fucking cheat")).toBe("you ****ing cheat"); // only the rude part is covered
+    expect(await say(env, room, STRONG)).toBe("that was **** luck");
+    expect(await say(env, room, "you fucking cheat")).toBe("you ******* cheat"); // the whole word goes
+    expect(await say(env, room, MILD)).toBe("**** it, you *****");
     expect(await say(env, room, "hello friends, nice game")).toBe("hello friends, nice game");
-    // it can't be switched off
-    const off = await env.service.act(room.code, {
-      type: "UPDATE_SETTINGS",
-      playerId: room.host,
-      settings: { profanityFilter: false },
-    });
-    expect(!off.ok && off.error.code).toBe("INVALID_SETTINGS");
+    for (const chatFilter of ["standard", "uncensored"]) {
+      const looser = await env.service.act(room.code, { type: "UPDATE_SETTINGS", playerId: room.host, settings: { chatFilter } });
+      expect(!looser.ok && looser.error.code, chatFilter).toBe("INVALID_SETTINGS");
+    }
     expect(await say(env, room, "still shit")).toBe("still ****");
   });
 
-  it("is on by default in Normal Mode, and the host can turn it off", async () => {
+  it("starts on standard in Normal Mode: strong words are hidden, mild ones are not", async () => {
     const env = makeService();
     const room = await lobbyOf(env, { contentMode: "normal" });
-    expect(await say(env, room, "what the shit")).toBe("what the ****");
-    must(await env.service.act(room.code, { type: "UPDATE_SETTINGS", playerId: room.host, settings: { profanityFilter: false } }));
-    expect(await say(env, room, "what the shit")).toBe("what the shit");
-    // and everyone is told what the room is doing
-    expect(env.broadcaster.lastState(room.friend).view.settings.profanityFilter).toBe(false);
+    expect(env.broadcaster.lastState(room.friend).view.settings.chatFilter).toBe("standard");
+    expect(await say(env, room, STRONG)).toBe("that was **** luck");
+    expect(await say(env, room, MILD)).toBe(MILD);
+    expect(await say(env, room, "just kys")).toBe("just ***");
+  });
+
+  it("can be strict or uncensored in Normal Mode, and everyone is told which", async () => {
+    const env = makeService();
+    const room = await lobbyOf(env, { contentMode: "normal", chatFilter: "strict" });
+    expect(await say(env, room, MILD)).toBe("**** it, you *****");
+    must(await env.service.act(room.code, { type: "UPDATE_SETTINGS", playerId: room.host, settings: { chatFilter: "uncensored" } }));
+    expect(env.broadcaster.lastState(room.friend).view.settings.chatFilter).toBe("uncensored");
+    expect(await say(env, room, STRONG)).toBe(STRONG);
+    expect(await say(env, room, MILD)).toBe(MILD);
+  });
+
+  it("goes back to strict when the host returns to Safe Mode", async () => {
+    const env = makeService();
+    const room = await lobbyOf(env, { contentMode: "normal", chatFilter: "uncensored" });
+    must(await env.service.act(room.code, { type: "UPDATE_SETTINGS", playerId: room.host, settings: { contentMode: "safe" } }));
+    expect(await say(env, room, STRONG)).toBe("that was **** luck");
+  });
+
+  it("blocks links at every level, uncensored included, and keeps the other limits", async () => {
+    for (const settings of [{}, { contentMode: "normal" }, { contentMode: "normal", chatFilter: "uncensored" }]) {
+      const env = makeService();
+      const room = await lobbyOf(env, settings);
+      for (const link of ["free robux at https://scam.example", "go to www.example.com", "discord.gg/abc", "bit.ly/x1", "example dot com"]) {
+        const result = await env.service.sendChat(room.code, room.host, link);
+        expect(!result.ok && result.error.code, `${JSON.stringify(settings)} ${link}`).toBe("CHAT_LINK");
+      }
+      expect(env.broadcaster.chatsTo(room.friend)).toEqual([]);
+      const long = await env.service.sendChat(room.code, room.host, "a".repeat(301));
+      expect(!long.ok && long.error.code).toBe("BAD_REQUEST");
+      must(await env.service.sendChat(room.code, room.host, "ok.so who is it? e.g. Ana"));
+    }
   });
 
   it("filters whatever channel the message goes to, and keeps what was said otherwise intact", async () => {
@@ -328,6 +360,6 @@ describe("the chat filter", () => {
     const [mafia] = room.withRole("mafia") as [string];
     must(await env.service.sendChat(room.code, mafia, "pick the shitty one"));
     const sent = env.broadcaster.chatsTo(mafia).pop();
-    expect(sent?.text).toBe("pick the ****ty one");
+    expect(sent?.text).toBe("pick the ****** one");
   });
 });

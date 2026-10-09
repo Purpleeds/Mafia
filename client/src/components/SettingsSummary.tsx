@@ -4,7 +4,7 @@ import { MODE_INFO } from "../lib/copy";
 import { presetName } from "./PresetPicker";
 import { fill, tieRuleLabel, wordsFor } from "../lib/wording";
 import { formatSeconds } from "../lib/labels";
-import { OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel } from "../lib/settings";
+import { AVATAR_POLICY_INFO, CHAT_FILTER_INFO, OPTIONAL_ROLE_INFO, TIMER_KEYS, TIMER_LABEL, mafiaCountLabel } from "../lib/settings";
 
 /** Read-only settings for everyone who isn't the host. */
 export function SettingsSummary({ settings, playerCount }: { settings: GameSettings; playerCount: number }) {
@@ -44,7 +44,13 @@ export function SettingsSummary({ settings, playerCount }: { settings: GameSetti
         </div>
         <div>
           <dt>Chat filter</dt>
-          <dd>{settings.contentMode === "safe" ? "On (always in Safe Mode)" : settings.profanityFilter ? "On" : "Off"}</dd>
+          <dd>
+            {settings.contentMode === "safe" ? "Strict (always in Safe Mode)" : CHAT_FILTER_INFO[settings.chatFilter].label}
+          </dd>
+        </div>
+        <div>
+          <dt>Own pictures</dt>
+          <dd>{AVATAR_POLICY_INFO[settings.customAvatars].label}</dd>
         </div>
         <div>
           <dt>AI narrator</dt>

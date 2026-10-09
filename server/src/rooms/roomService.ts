@@ -3,17 +3,20 @@ import {
   MAX_PLAYERS,
   MAX_SPECTATORS,
   NARRATION_TIMEOUT_MS,
-  censorProfanity,
+  containsLink,
   containsProfanity,
-  isChatFiltered,
+  effectiveChatFilter,
+  filterChatText,
   validateCustomRoomCode,
   validateRoomPassword,
   type Avatar,
+  type AvatarImagesPayload,
   CHAT_REACTIONS,
   MAX_CHAT_LENGTH,
   type ChatReaction,
   type ChatHistoryPayload,
   type ChatMessage,
+  type CheckSeatResult,
   type ErrorCode,
   type ErrorPayload,
   type GameStatePayload,
@@ -22,8 +25,11 @@ import {
   type RemovedPayload,
   type RemovedReason,
   type RoomInfo,
+  type RoomNoticeKind,
+  type RoomNoticePayload,
   type RoomPreview,
   type SessionInfo,
+  type SettingsPatch,
 } from "@mafia/shared";
 import {
   applyAction,
@@ -40,6 +46,7 @@ import {
 } from "../game/index.js";
 import type { Logger } from "../logger.js";
 import { narrationFacts } from "../narration/facts.js";
+import { AvatarStore, newAvatarId } from "./avatars.js";
 import { MAX_CHAT_HISTORY, canSeeInHistory, sanitizeChatText } from "./chatRules.js";
 import { digest, generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
 import { KeyedMutex } from "./keyedMutex.js";
@@ -47,6 +54,7 @@ import { hashPassword, verifyPassword } from "./passwords.js";
 import type { RoomStore } from "./roomStore.js";
 import type { Scheduler } from "./scheduler.js";
 import type { Room } from "./types.js";
+import { upgradeRoom } from "./upgrade.js";
 
 /** How the service talks to players. The Socket.IO layer implements it; tests use a fake. */
 export interface Broadcaster {
@@ -57,6 +65,10 @@ export interface Broadcaster {
   removed(roomCode: string, playerId: string, payload: RemovedPayload): void;
   /** Ask the host's browser to write a narration. Only ever sent to the host. */
   narrationRequest(roomCode: string, playerId: string, payload: NarratorRequestPayload): void;
+  /** Avatar pictures this member may see (only ever members of the room). */
+  avatarImages(roomCode: string, playerId: string, payload: AvatarImagesPayload): void;
+  /** A short message about someone in the room (joined, left, disconnected...). */
+  notice(roomCode: string, playerId: string, payload: RoomNoticePayload): void;
 }
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ErrorPayload };
@@ -72,6 +84,8 @@ export interface CreateRoomOptions {
   password?: string;
   /** Identifies the creator (a hash of their IP); limits how many rooms one creator keeps open. */
   ownerKey?: string;
+  /** The host's last-used settings. Ignored if they aren't valid. */
+  settings?: SettingsPatch;
 }
 
 export interface RoomServiceOptions {
@@ -102,6 +116,15 @@ const fail = <T = never>(code: ErrorCode, message: string): ServiceResult<T> => 
   ok: false,
   error: { code, message },
 });
+
+const HOST_TIMER_ACTIONS = new Set<string>(["PAUSE", "RESUME", "ADD_TIME", "SKIP_TO_VOTING"]);
+
+const REMOVED_NOTICE: Record<RemovedReason, RoomNoticeKind> = {
+  left: "left",
+  kicked: "kicked",
+  dropped: "dropped",
+  room_closed: "left",
+};
 
 const REMOVED_MESSAGES: Record<RemovedReason, string> = {
   left: "You left the room.",
@@ -148,6 +171,8 @@ export class RoomService {
   private readonly roomsByOwner = new Map<string, Set<string>>();
   /** room code -> id of the narration the host's browser has been asked to write. */
   private readonly narrationAsked = new Map<string, string>();
+  /** Uploaded avatar pictures: memory only, never in the room's saved copy. */
+  readonly avatars = new AvatarStore();
 
   constructor(options: RoomServiceOptions) {
     this.store = options.store;
@@ -198,6 +223,11 @@ export class RoomService {
     const sessionToken = newSessionToken();
     const joined = applyAction(createLobby(), { type: "JOIN", playerId, name, avatar }, this.context());
     if (!joined.ok) return { ok: false, error: joined.error };
+    if (options.settings) {
+      // The host's remembered settings, checked like any change. Bad ones are simply left out.
+      const set = applyAction(joined.state, { type: "UPDATE_SETTINGS", playerId, settings: options.settings }, this.context());
+      if (set.ok) joined.state = set.state;
+    }
 
     const makeRoom = (code: string): Room => ({
       code,
@@ -290,12 +320,8 @@ export class RoomService {
   /** Finds the member a session token belongs to. Doesn't change anything. */
   resumeSession(code: string, sessionToken: string): Promise<ServiceResult<SessionInfo>> {
     return this.withRoom(code, async (room) => {
-      const hashed = hashToken(sessionToken);
-      const memberId = Object.hasOwn(room.sessions, hashed) ? room.sessions[hashed] : undefined;
-      const member = memberId === undefined ? undefined : findMember(room.state, memberId);
-      if (!memberId || !member || ("kicked" in member && member.kicked)) {
-        return fail("SESSION_INVALID", "That session has expired. Please join again.");
-      }
+      const memberId = this.memberForToken(room, sessionToken);
+      if (memberId === null) return fail("SESSION_INVALID", "That session has expired. Please join again.");
       const seat = room.state.players.some((p) => p.id === memberId) ? "player" : "spectator";
       return ok({ roomCode: code, playerId: memberId, sessionToken, seat });
     });
@@ -366,6 +392,110 @@ export class RoomService {
     });
   }
 
+  /**
+   * For the home screen's "Rejoin your last game": does the room still run, and
+   * is this saved seat still yours? Changes nothing and joins nothing.
+   */
+  checkSeat(code: string, sessionToken: string): Promise<ServiceResult<CheckSeatResult>> {
+    return this.withRoom(code, async (room) => {
+      const { state } = room;
+      const stage = state.phase === "LOBBY" ? "lobby" : state.phase === "GAME_OVER" ? "game_over" : "in_game";
+      return ok({ roomCode: code, stage, seatValid: this.memberForToken(room, sessionToken) !== null });
+    });
+  }
+
+  // ------------------------------------------------------------ avatar pictures
+
+  /**
+   * Before an upload is read: the session must belong to someone in the room,
+   * in the lobby, with pictures allowed. Returns the member's id.
+   */
+  authorizeAvatarUpload(code: string, sessionToken: string): Promise<ServiceResult<{ memberId: string }>> {
+    return this.withRoom(code, async (room) => {
+      const memberId = this.memberForToken(room, sessionToken);
+      if (memberId === null) return fail("SESSION_INVALID", "Your seat in this room has expired. Join again.");
+      const problem = this.avatarUploadProblem(room);
+      if (problem) return problem;
+      return ok({ memberId });
+    });
+  }
+
+  /**
+   * Stores a picture the server has already re-encoded. Shows at once when
+   * pictures are simply on (or it's the host's own); otherwise it waits for the host.
+   */
+  saveAvatar(code: string, memberId: string, dataUrl: string): Promise<ServiceResult<{ status: "pending" | "approved" }>> {
+    return this.withRoom(code, async (room) => {
+      if (!findMember(room.state, memberId)) return fail("NOT_IN_ROOM", "You are not in this room.");
+      const problem = this.avatarUploadProblem(room);
+      if (problem) return problem;
+      const autoApprove = room.state.settings.customAvatars === "on" || room.state.hostId === memberId;
+      const status = autoApprove ? "approved" : "pending";
+      this.avatars.set(code, memberId, { id: newAvatarId(), dataUrl, status });
+      room.lastActivityAt = this.clock();
+      await this.publish(room);
+      this.logger.info("avatar.uploaded", { room: code, player: memberId, status, pictures: this.avatars.size });
+      return ok({ status });
+    });
+  }
+
+  /** Back to the generated avatar: a player removes their own picture, or the host removes anyone's (any time). */
+  removeAvatar(code: string, actorId: string, targetId: string): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (actorId !== targetId && room.state.hostId !== actorId) {
+        return fail("NOT_HOST", "Only the host can remove someone else's picture.");
+      }
+      const target = findMember(room.state, targetId);
+      if (!target) return fail("INVALID_TARGET", "That player isn't in the room.");
+      if (!this.avatars.remove(code, targetId)) return ok(null);
+      await this.publish(room);
+      if (actorId !== targetId) {
+        this.broadcaster.notice(code, targetId, { kind: "avatar_removed", playerId: targetId, name: target.name });
+        this.logger.info("avatar.removed_by_host", { room: code, player: targetId });
+      }
+      return ok(null);
+    });
+  }
+
+  /** Host: let a waiting picture show to everyone, or turn it down (it is deleted). */
+  reviewAvatar(code: string, hostId: string, targetId: string, approve: boolean): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (room.state.hostId !== hostId) return fail("NOT_HOST", "Only the host can approve pictures.");
+      const target = findMember(room.state, targetId);
+      const avatar = this.avatars.get(code, targetId);
+      if (!target || !avatar || avatar.status !== "pending") {
+        return fail("INVALID_TARGET", "That picture isn't waiting for approval any more.");
+      }
+      if (approve) this.avatars.set(code, targetId, { ...avatar, status: "approved" });
+      else this.avatars.remove(code, targetId);
+      await this.publish(room);
+      this.broadcaster.notice(code, targetId, {
+        kind: approve ? "avatar_approved" : "avatar_rejected",
+        playerId: targetId,
+        name: target.name,
+      });
+      this.logger.info("avatar.reviewed", { room: code, player: targetId, approved: approve });
+      return ok(null);
+    });
+  }
+
+  private avatarUploadProblem(room: Room): ServiceResult<never> | null {
+    if (room.state.settings.customAvatars === "off") {
+      return fail("AVATARS_OFF", "The host has turned off custom pictures in this room.");
+    }
+    if (room.state.phase !== "LOBBY") return fail("WRONG_PHASE", "You can change your picture in the lobby.");
+    return null;
+  }
+
+  /** The member a session token belongs to, if they're still in the room (and weren't removed). */
+  private memberForToken(room: Room, sessionToken: string): string | null {
+    const hashed = hashToken(sessionToken);
+    const memberId = Object.hasOwn(room.sessions, hashed) ? room.sessions[hashed] : undefined;
+    const member = memberId === undefined ? undefined : findMember(room.state, memberId);
+    if (!memberId || !member || ("kicked" in member && member.kicked)) return null;
+    return memberId;
+  }
+
   // ------------------------------------------------------------ playing
 
   /** Applies a member's action. The engine checks phase, host, life, role and target. */
@@ -382,6 +512,9 @@ export class RoomService {
       await this.commit(room, prev.value, action.type === "KICK" ? { removedReason: "kicked" } : {});
       if (action.type === "KICK") this.logger.info("player.kicked", { room: code, player: action.targetId });
       if (action.type === "TRANSFER_HOST") this.logger.info("host.transferred", { room: code, to: action.targetId });
+      if (HOST_TIMER_ACTIONS.has(action.type)) {
+        this.logger.info("host.timer", { room: code, action: action.type, phase: room.state.phase, round: room.state.round });
+      }
       return ok(null);
     });
   }
@@ -391,8 +524,10 @@ export class RoomService {
     return this.relayChat(code, memberId, (state) => {
       const cleaned = sanitizeChatText(rawText);
       if (cleaned === null) return fail("BAD_REQUEST", `Messages must be 1–${MAX_CHAT_LENGTH} characters.`);
-      // Safe Mode always masks rude words; in Normal Mode it is the host's choice.
-      return ok({ text: isChatFiltered(state.settings) ? censorProfanity(cleaned) : cleaned });
+      // Links are blocked at every filter level, uncensored included (spam and scam sites).
+      if (containsLink(cleaned)) return fail("CHAT_LINK", "Links can't be shared in chat.");
+      // Safe Mode is always strict; in Normal Mode the host picks strict, standard or uncensored.
+      return ok({ text: filterChatText(cleaned, effectiveChatFilter(state.settings)) });
     });
   }
 
@@ -447,6 +582,9 @@ export class RoomService {
       const now = this.clock();
       const payload = this.prepareDelivery(room, memberId, now, true);
       await this.store.save(room);
+      // A fresh connection (or a refreshed page) has no pictures yet: send them all again.
+      this.avatars.resetDelivered(code, memberId);
+      this.deliverAvatars(room);
       if (payload) this.broadcaster.state(code, memberId, payload);
       this.broadcaster.chatHistory(code, memberId, {
         messages: room.chat.filter((m) => canSeeInHistory(room.state, memberId, m)),
@@ -606,6 +744,7 @@ export class RoomService {
     return this.mutex.run(code, async () => {
       const room = await this.store.get(code);
       if (!room) return fail("ROOM_NOT_FOUND", "That room doesn't exist. Check the code and try again.");
+      upgradeRoom(room);
       return task(room);
     });
   }
@@ -658,6 +797,13 @@ export class RoomService {
       return;
     }
 
+    // Pictures switched simply "on": anything still waiting for the host shows now.
+    if (state.settings.customAvatars === "on") {
+      for (const [id, avatar] of this.avatars.entries(room.code)) {
+        if (avatar.status === "pending") this.avatars.set(room.code, id, { ...avatar, status: "approved" });
+      }
+    }
+
     const outgoing = this.prepareDeliveries(room, now);
     await this.store.save(room);
     this.scheduleTimer(room);
@@ -667,7 +813,9 @@ export class RoomService {
     for (const id of newlyKicked) {
       this.broadcaster.removed(room.code, id, { reason: "kicked", message: REMOVED_MESSAGES.kicked });
     }
+    this.deliverAvatars(room);
     for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
+    this.sendNotices(room, prev, gone, newlyKicked, reason);
 
     // A result was just announced: ask the host's browser for the narration (or settle for a ready-made line).
     await this.requestNarration(room);
@@ -693,10 +841,77 @@ export class RoomService {
   private async publish(room: Room): Promise<void> {
     const outgoing = this.prepareDeliveries(room, this.clock());
     await this.store.save(room);
+    this.deliverAvatars(room);
     for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
   }
 
+  /** Which pictures a member may see: approved ones (unless pictures are off), their own, and, for the host, those waiting. */
+  private visibleAvatarIds(room: Room, memberId: string): string[] {
+    const policy = room.state.settings.customAvatars;
+    if (policy === "off") return [];
+    const isHost = room.state.hostId === memberId;
+    return this.avatars
+      .entries(room.code)
+      .filter(([owner, a]) => a.status === "approved" || owner === memberId || (isHost && policy === "approval"))
+      .map(([, a]) => a.id);
+  }
+
+  /** Sends each member (never anyone outside the room) the pictures they may see and don't have yet. */
+  private deliverAvatars(room: Room): void {
+    const kicked = new Set(room.state.players.filter((p) => p.kicked).map((p) => p.id));
+    for (const id of memberIds(room.state)) {
+      if (kicked.has(id)) continue;
+      const fresh = this.avatars.takeUndelivered(room.code, id, this.visibleAvatarIds(room, id));
+      const images = fresh.flatMap((imageId) => {
+        const avatar = this.avatars.byId(room.code, imageId);
+        return avatar ? [{ id: imageId, dataUrl: avatar.dataUrl }] : [];
+      });
+      if (images.length > 0) this.broadcaster.avatarImages(room.code, id, { images });
+    }
+  }
+
+  /**
+   * Short messages for everyone else about who joined, left, was removed, lost
+   * their connection, came back, or became the host.
+   */
+  private sendNotices(room: Room, prev: GameState, gone: string[], newlyKicked: string[], reason: RemovedReason): void {
+    const { state } = room;
+    const notices: RoomNoticePayload[] = [];
+    const before = new Map([...prev.players, ...prev.spectators].map((m) => [m.id, m]));
+    const now = [...state.players, ...state.spectators];
+    for (const id of gone) {
+      const m = before.get(id);
+      if (m) notices.push({ kind: REMOVED_NOTICE[reason], playerId: id, name: m.name });
+    }
+    for (const id of newlyKicked) {
+      const m = before.get(id);
+      if (m) notices.push({ kind: "kicked", playerId: id, name: m.name });
+    }
+    for (const m of now) {
+      const was = before.get(m.id);
+      if (!was) notices.push({ kind: "joined", playerId: m.id, name: m.name });
+      else if (was.connected && !m.connected && !newlyKicked.includes(m.id)) {
+        // Leaving a running game keeps the seat as "away", but everyone should hear they left on purpose.
+        notices.push({ kind: reason === "left" ? "left" : "disconnected", playerId: m.id, name: m.name });
+      }
+      else if (!was.connected && m.connected) notices.push({ kind: "reconnected", playerId: m.id, name: m.name });
+    }
+    const host = state.hostId === null ? undefined : state.players.find((p) => p.id === state.hostId);
+    if (host && prev.hostId !== null && prev.hostId !== state.hostId) {
+      notices.push({ kind: "host_changed", playerId: host.id, name: host.name });
+    }
+    if (notices.length === 0) return;
+    const kicked = new Set(state.players.filter((p) => p.kicked).map((p) => p.id));
+    for (const id of memberIds(state)) {
+      if (kicked.has(id)) continue;
+      for (const notice of notices) {
+        if (notice.playerId !== id || notice.kind === "host_changed") this.broadcaster.notice(room.code, id, notice);
+      }
+    }
+  }
+
   private forgetMember(room: Room, id: string): void {
+    this.avatars.remove(room.code, id);
     for (const [hash, owner] of Object.entries(room.sessions)) if (owner === id) delete room.sessions[hash];
     delete room.disconnectedAt[id];
     delete room.reconnecting[id];
@@ -726,11 +941,25 @@ export class RoomService {
     return { version, serverNow: now, room: info, view };
   }
 
-  /** The engine's view plus who is in their reconnect grace period. */
+  /** The engine's view plus who is in their reconnect grace period, and the avatar pictures this member may see. */
   private viewFor(room: Room, memberId: string): GameView {
     const view = getGameView(room.state, memberId);
+    const policy = room.state.settings.customAvatars;
     for (const m of [...view.players, ...view.spectators]) {
       if (m.connected && room.reconnecting[m.id] !== undefined) m.connection = "reconnecting";
+      const avatar = this.avatars.get(room.code, m.id);
+      if (policy !== "off" && avatar?.status === "approved") m.avatar.photo = avatar.id;
+    }
+    if (view.you) {
+      const mine = this.avatars.get(room.code, view.you.id);
+      view.you.photo = mine && policy !== "off" ? { id: mine.id, status: mine.status } : null;
+      if (mine?.status === "approved" && policy !== "off") view.you.avatar.photo = mine.id;
+    }
+    if (policy === "approval" && room.state.hostId === memberId) {
+      view.avatarRequests = this.avatars
+        .entries(room.code)
+        .filter(([owner, a]) => a.status === "pending" && owner !== memberId)
+        .map(([owner, a]) => ({ playerId: owner, photo: a.id }));
     }
     return view;
   }
@@ -787,6 +1016,7 @@ export class RoomService {
   private async close(room: Room, reason: "empty" | "idle", alsoNotify: string[] = []): Promise<void> {
     this.scheduler.clear(room.code);
     this.narrationAsked.delete(room.code);
+    this.avatars.removeRoom(room.code);
     if (room.ownerKey) {
       const codes = this.roomsByOwner.get(room.ownerKey);
       codes?.delete(room.code);

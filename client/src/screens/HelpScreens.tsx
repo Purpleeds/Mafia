@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Icon } from "../art/icons";
 import { AccessibilitySettings } from "../components/AccessibilitySettings";
 import { FxSettings } from "../components/FxSettings";
+import { PersonalSettings } from "../components/PersonalSettings";
 import { SoundButton, SoundPanel } from "../components/SoundControls";
 import { HowToPlayContent, RoleGuideContent } from "../components/RulesContent";
 import { HOW_TO_PLAY_PATH, ROLE_GUIDE_PATH, goHome, navigate } from "../lib/router";
@@ -36,6 +37,7 @@ export function HowToPlayScreen() {
         <h2 id="display-title" className="card-title">
           Display and sound
         </h2>
+        <PersonalSettings />
         <AccessibilitySettings idPrefix="page-a11y" />
         <FxSettings idPrefix="page-fx" />
         <SoundPanel idPrefix="page-sound" />
