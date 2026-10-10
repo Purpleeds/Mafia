@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { PublicPlayerView } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { AvatarBadge } from "./AvatarBadge";
+import { BotTag } from "./BotTag";
 import { NOTE_TAG_LABEL, type Notes } from "../lib/notes";
 import { OUTSIDE_A_ROOM, roleLabel, wordsFor, type WordingSettings } from "../lib/wording";
 
@@ -74,6 +75,7 @@ export function PlayerGrid({
             <AvatarBadge avatar={p.avatar} size={52} />
             <span className="pcard-name">
               {p.name}
+              <BotTag player={p} />
               {p.id === youId ? <span className="you-tag"> (you)</span> : null}
             </span>
             {out ? (

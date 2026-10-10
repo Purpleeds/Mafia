@@ -4,6 +4,7 @@ import express, { type Express } from "express";
 import { Server } from "socket.io";
 import { AVATAR_UPLOAD_PATH } from "@mafia/shared";
 import { avatarUploadHandler } from "./avatars/upload.js";
+import { BotManager, type BotManagerOptions } from "./bots/manager.js";
 import { DevTools } from "./dev/devTools.js";
 import { createConsoleLogger, type Logger } from "./logger.js";
 import { MemoryRoomStore, type RoomStore } from "./rooms/roomStore.js";
@@ -26,6 +27,8 @@ export interface MafiaServerOptions {
   sweepIntervalMs?: number;
   /** Avatar uploads each player may make per minute (3). */
   avatarUploadsPerMinute?: number;
+  /** Bot timing and randomness (tests make them quick and repeatable). */
+  bots?: Partial<Omit<BotManagerOptions, "port" | "logger">>;
   trustProxyHops?: number;
   maxSocketsPerIp?: number;
   /**
@@ -46,6 +49,8 @@ export interface MafiaServerInstance {
   httpServer: HttpServer;
   io: MafiaServer;
   service: RoomService;
+  /** Runs every bot seat (always on: bots are a host feature). */
+  bots: BotManager;
   /** Set when dev tools are on. */
   devTools: DevTools | null;
   close(): Promise<void>;
@@ -100,8 +105,11 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     ...(dev ? { maxRoomsPerOwner: 50 } : {}),
     ...options.service,
   });
-  const devTools = dev ? new DevTools({ service, store, logger, clock }) : null;
-  devTools?.start();
+  // Bots get exactly what their seats' sockets get, and act only through the service's checks.
+  const bots = new BotManager({ port: service, logger, now: clock, ...options.bots });
+  service.attachBots(bots);
+  bots.start();
+  const devTools = dev ? new DevTools({ store, clock }) : null;
   const devLimits: Partial<RateLimitConfig> = dev ? { createRoom: { capacity: 100, refillPerSecond: 1 } } : {};
   const limiter = new RateLimiter({ ...DEFAULT_RATE_LIMITS, ...devLimits, ...options.rateLimits }, clock);
   const presence = new Presence();
@@ -132,11 +140,12 @@ export function createMafiaServer(options: MafiaServerOptions = {}): MafiaServer
     httpServer,
     io,
     service,
+    bots,
     devTools,
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(sweep);
-        devTools?.stop();
+        bots.stop();
         scheduler.clearAll();
         presence.clear();
         io.close(() => resolve());

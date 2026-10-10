@@ -59,6 +59,10 @@ export const MIN_PLAYERS = 5;
 export const MAX_PLAYERS = 20;
 /** Late joiners watch until the next game. */
 export const MAX_SPECTATORS = 20;
+/** Bots a host may add to one room (the room's player limit still applies). */
+export const MAX_BOTS = 10;
+/** Without solo practice, a game needs at least this many real (non-bot) players. */
+export const MIN_HUMANS = 2;
 
 /** Roughly one Mafia per four players, at least one. */
 export function defaultMafiaCount(playerCount: number): number {
@@ -109,7 +113,18 @@ export interface GameSettings {
    * AI. Falls back to ready-made lines whenever that doesn't work out.
    */
   aiNarrator: boolean;
+  /** How bots play: "easy" picks mostly at random, "normal" reasons from what it has seen. */
+  botDifficulty: BotDifficulty;
+  /** Allow a game with a single real player and bots (practice). Off: at least 2 real players. */
+  soloPractice: boolean;
+  /** When a real player joins a lobby that is full or at the size the host filled it to, a bot makes room. */
+  replaceBots: boolean;
+  /** A bot plays on for anyone who stays disconnected past the grace period, until they come back. */
+  botTakeover: boolean;
 }
+
+export const BOT_DIFFICULTIES = ["easy", "normal"] as const;
+export type BotDifficulty = (typeof BOT_DIFFICULTIES)[number];
 
 export interface SettingsPatch {
   contentMode?: ContentMode;
@@ -124,6 +139,10 @@ export interface SettingsPatch {
   customAvatars?: AvatarPolicy;
   sneakyGang?: boolean;
   aiNarrator?: boolean;
+  botDifficulty?: BotDifficulty;
+  soloPractice?: boolean;
+  replaceBots?: boolean;
+  botTakeover?: boolean;
 }
 
 /** What the Mafia are called in this game. "Sneaky Gang" is a Safe Mode option for younger players. */
@@ -182,6 +201,10 @@ export function defaultSettings(): GameSettings {
     ...modeDefaults("safe"),
     sneakyGang: false,
     aiNarrator: false,
+    botDifficulty: "normal",
+    soloPractice: false,
+    replaceBots: true,
+    botTakeover: true,
   };
 }
 
@@ -414,6 +437,10 @@ export interface PublicPlayerView {
   role: Role | null;
   /** Lobby: ready to play. Role-reveal: acknowledged. Voting: has voted. Never used at night. */
   done: boolean;
+  /** A computer player the host added. Shown with a "Bot" label everywhere. */
+  isBot: boolean;
+  /** A real player who is away: a bot is playing for them until they come back. */
+  botPlaying: boolean;
 }
 
 export interface SpectatorView {

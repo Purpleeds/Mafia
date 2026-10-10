@@ -6,9 +6,10 @@ export function noticeText(notice: RoomNoticePayload, youId: string | null): str
   const you = notice.playerId === youId;
   switch (notice.kind) {
     case "joined":
-      return `${name} joined.`;
+      // Bots coming and going are already visible in the player list (Fill adds several at once).
+      return notice.isBot ? null : `${name} joined.`;
     case "left":
-      return `${name} left the room.`;
+      return notice.isBot ? null : `${name} left the room.`;
     case "kicked":
       return `${name} was removed by the host.`;
     case "dropped":
@@ -19,6 +20,10 @@ export function noticeText(notice: RoomNoticePayload, youId: string | null): str
       return `${name} is back.`;
     case "host_changed":
       return you ? "You're now the host." : `${name} is now the host.`;
+    case "bot_takeover":
+      return you ? "A bot played for you while you were away." : `A bot is now playing for ${name}.`;
+    case "bot_released":
+      return you ? "You're back in control." : `${name} is back and playing again.`;
     case "avatar_approved":
       return "The host approved your picture. Everyone can see it now.";
     case "avatar_rejected":

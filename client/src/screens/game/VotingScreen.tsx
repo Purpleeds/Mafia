@@ -13,7 +13,7 @@ import { myPlayer, nameOf, type PhaseProps } from "./common";
 import { sounds } from "../../audio/engine";
 
 /** A player's vote count. Keyed by the count, so each new vote lands with a little bounce. */
-function VoteBadge({ count, voters }: { count: number; voters: { id: string; name: string; avatar: AvatarView }[] }) {
+function VoteBadge({ count, voters }: { count: number; voters: { id: string; name: string; avatar: AvatarView; isBot: boolean }[] }) {
   if (count === 0) return null;
   return (
     <span className="vote-badge-group">
@@ -24,7 +24,7 @@ function VoteBadge({ count, voters }: { count: number; voters: { id: string; nam
       {voters.length > 0 ? (
         <span className="voter-row">
           {voters.map((v) => (
-            <AvatarBadge key={v.id} avatar={v.avatar} size={20} label={`${v.name} voted for this`} />
+            <AvatarBadge key={v.id} avatar={v.avatar} size={20} label={`${v.name}${v.isBot ? " (Bot)" : ""} voted for this`} />
           ))}
         </span>
       ) : null}

@@ -3,6 +3,7 @@ import type { GameView, TimelineEntry } from "@mafia/shared";
 import { Icon } from "../../art/icons";
 import { RoleIcon } from "../../art/roles";
 import { AvatarBadge } from "../../components/AvatarBadge";
+import { BotTag } from "../../components/BotTag";
 import { ErrorText } from "../../components/ErrorText";
 import { fill, isGangMember, nightOutcomeLabel, roleLabel, timelineDeath, winnerLabel, wordsFor } from "../../lib/wording";
 import { useAction } from "../../lib/useAction";
@@ -79,6 +80,7 @@ export function GameOverScreen({ received }: PhaseProps) {
               <div className="player-info">
                 <div className="player-name">
                   <span className="name-text">{p.name}</span>
+                  <BotTag player={p} />
                   {p.id === view.you?.id ? <span className="you-tag"> (you)</span> : null}
                   {winners.has(p.id) ? (
                     <span title="Winner">

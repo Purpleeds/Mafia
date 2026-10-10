@@ -27,7 +27,7 @@ describe("private notes", () => {
 
 describe("messages about people in the room", () => {
   it("says what happened in plain words, with no emoji", () => {
-    const kinds: RoomNoticeKind[] = ["joined", "left", "kicked", "dropped", "disconnected", "reconnected", "host_changed", "avatar_approved", "avatar_rejected", "avatar_removed"];
+    const kinds: RoomNoticeKind[] = ["joined", "left", "kicked", "dropped", "disconnected", "reconnected", "host_changed", "avatar_approved", "avatar_rejected", "avatar_removed", "bot_takeover", "bot_released"];
     for (const kind of kinds) {
       const text = noticeText({ kind, playerId: "p2", name: "Ana" }, "p1");
       expect(text, kind).toBeTruthy();
@@ -35,6 +35,10 @@ describe("messages about people in the room", () => {
     }
     expect(noticeText({ kind: "host_changed", playerId: "p1", name: "Ana" }, "p1")).toBe("You're now the host.");
     expect(noticeText({ kind: "disconnected", playerId: "p2", name: "Ana" }, "p1")).toBe("Ana lost their connection.");
+    expect(noticeText({ kind: "bot_takeover", playerId: "p2", name: "Sam" }, "p1")).toBe("A bot is now playing for Sam.");
+    expect(noticeText({ kind: "bot_released", playerId: "p2", name: "Sam" }, "p1")).toBe("Sam is back and playing again.");
+    expect(noticeText({ kind: "joined", playerId: "p3", name: "Pickles", isBot: true }, "p1")).toBeNull();
+    expect(noticeText({ kind: "left", playerId: "p3", name: "Pickles", isBot: true }, "p1")).toBeNull();
   });
 });
 

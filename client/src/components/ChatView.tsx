@@ -4,6 +4,7 @@ import { Icon } from "../art/icons";
 import { displayChatText, setMuted, useMuted, usePrefs } from "../lib/prefs";
 import { REACTIONS, reactionLabel } from "../lib/reactions";
 import { AvatarBadge } from "./AvatarBadge";
+import { BotTag } from "./BotTag";
 import { ChatFilterToggle, UncensoredNotice } from "./ChatNotices";
 
 interface ChatViewProps {
@@ -16,6 +17,8 @@ interface ChatViewProps {
   /** Quick reactions; offered whenever typing is. Returns an error message or null. */
   onReact?: ((reaction: ChatReaction) => Promise<string | null>) | null;
   avatarOf: (senderId: string) => AvatarView | null;
+  /** Bots get a "Bot" label next to their name. */
+  isBot?: (senderId: string) => boolean;
   placeholder: string;
   /** Shown instead of the input when reading only. */
   readOnlyNote?: string;
@@ -33,6 +36,7 @@ export function ChatView({
   onSend,
   onReact,
   avatarOf,
+  isBot,
   placeholder,
   readOnlyNote,
   emptyText,
@@ -105,6 +109,7 @@ export function ChatView({
                     onClick={() => setMuting((current) => (current === m.id ? null : m.id))}
                   >
                     {m.senderName}
+                    {isBot?.(m.senderId) ? <BotTag player={{ isBot: true, botPlaying: false }} /> : null}
                     <span className="sr-only">: options</span>
                   </button>
                 )}

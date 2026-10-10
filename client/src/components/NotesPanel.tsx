@@ -2,6 +2,7 @@ import type { GameView } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { NOTE_MAX_LENGTH, NOTE_TAGS, NOTE_TAG_LABEL, gameKey, setNote, useNotes } from "../lib/notes";
 import { AvatarBadge } from "./AvatarBadge";
+import { BotTag } from "./BotTag";
 
 /**
  * "My notes": tag the other players Suspect, Trust or Unsure and jot a few
@@ -32,7 +33,10 @@ export function NotesPanel({ view, roomCode }: { view: GameView; roomCode: strin
             <li key={p.id} className={`note-row${out ? " is-out" : ""}`}>
               <div className="note-head">
                 <AvatarBadge avatar={p.avatar} size={28} />
-                <span className="note-name">{p.name}</span>
+                <span className="note-name">
+                  {p.name}
+                  <BotTag player={p} />
+                </span>
                 <span className="note-tags" role="group" aria-label={`Tag ${p.name}`}>
                   {NOTE_TAGS.map((tag) => (
                     <button

@@ -6,7 +6,6 @@ import {
   type Avatar,
   CHAT_REACTIONS,
   type ChatReactPayload,
-  type DevFillBotsPayload,
   type ChatReaction,
   type ChatSendPayload,
   type CheckSeatPayload,
@@ -234,17 +233,6 @@ export function parseChat(raw: unknown): Parsed<ChatSendPayload> {
   const text = stringField(raw, "text", MAX_CHAT_INPUT);
   if (text === null) return bad("text must be a string.");
   return ok({ text });
-}
-
-export function parseFillBots(raw: unknown): Parsed<DevFillBotsPayload> {
-  if (raw === undefined || raw === null) return ok({});
-  if (!isRecord(raw)) return bad("Expected { count? }.");
-  const count = raw.count;
-  if (count === undefined) return ok({});
-  if (typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > 20) {
-    return bad("count must be a whole number from 1 to 20.");
-  }
-  return ok({ count });
 }
 
 export function parseReaction(raw: unknown): Parsed<ChatReactPayload> {

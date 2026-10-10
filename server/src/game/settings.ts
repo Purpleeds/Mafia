@@ -1,5 +1,6 @@
 import {
   AVATAR_POLICIES,
+  BOT_DIFFICULTIES,
   CHAT_FILTERS,
   CONTENT_MODES,
   MAX_MAFIA_SETTING,
@@ -69,6 +70,16 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
       case "aiNarrator":
         if (typeof value !== "boolean") return bad("aiNarrator must be true or false.");
         next.aiNarrator = value;
+        break;
+      case "botDifficulty":
+        if (!isOneOf(BOT_DIFFICULTIES, value)) return bad("Bot difficulty must be easy or normal.");
+        next.botDifficulty = value;
+        break;
+      case "soloPractice":
+      case "replaceBots":
+      case "botTakeover":
+        if (typeof value !== "boolean") return bad(`${key} must be true or false.`);
+        next[key] = value;
         break;
       case "mafiaCount":
         if (value === "auto") {

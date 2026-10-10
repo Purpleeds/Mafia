@@ -83,5 +83,6 @@ export function resetGameData(state: GameState): void {
     p.ackedRole = false;
     p.kicked = false;
     p.ready = false;
+    p.botControlled = false;
   }
 }

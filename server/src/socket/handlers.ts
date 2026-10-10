@@ -18,7 +18,6 @@ import { playerRoom, type MafiaServer, type MafiaSocket } from "./types.js";
 import {
   parseChat,
   parseCheckSeat,
-  parseFillBots,
   parseReaction,
   parseReviewAvatar,
   parseSetReady,
@@ -438,10 +437,17 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
       withSession((s) => service.submitNarration(s.roomCode, s.playerId, p.requestId, p.text)),
     );
 
+    on("host:addBot", { category: "hostAction", parse: parseEmpty }, () =>
+      withSession((s) => service.addBot(s.roomCode, s.playerId)),
+    );
+    on("host:removeBot", { category: "hostAction", parse: parseEmpty }, () =>
+      withSession((s) => service.removeBot(s.roomCode, s.playerId)),
+    );
+    on("host:fillBots", { category: "hostAction", parse: parseEmpty }, () =>
+      withSession((s) => service.fillBots(s.roomCode, s.playerId)),
+    );
+
     if (devTools) {
-      on("dev:fillBots", { category: "hostAction", parse: parseFillBots }, (p) =>
-        withSession((s) => devTools.bots.addBots(s.roomCode, s.playerId, p.count)),
-      );
       on("dev:debugState", { category: "gameAction", parse: () => ({ ok: true, value: {} }) }, () =>
         withSession((s) => devTools.debugSnapshot(s.roomCode, s.playerId)),
       );

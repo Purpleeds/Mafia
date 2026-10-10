@@ -102,6 +102,14 @@ export interface PlayerState {
   kicked: boolean;
   /** Lobby: has said they're ready to play. */
   ready: boolean;
+  /** A computer player added by the host. Always connected; never the host. */
+  isBot: boolean;
+  /**
+   * A real player who stayed away past the grace period while a bot plays their
+   * seat. They count as present for the game (connected stays true) until they
+   * come back, but can't be the host meanwhile.
+   */
+  botControlled: boolean;
 }
 
 export interface SpectatorState {
@@ -195,6 +203,13 @@ export type GameAction =
   | { type: "NIGHT_ACTION"; playerId: string; targetId: string; secondTargetId?: string }
   | { type: "CAST_VOTE"; playerId: string; targetId: string }
   | { type: "SET_READY"; playerId: string; ready: boolean }
+  /** Host, lobby: a bot joins as a player (the server picks its id, name and look). */
+  | { type: "ADD_BOT"; playerId: string; botId: string; name: string; avatar: Avatar }
+  /** Host, lobby: a bot leaves. */
+  | { type: "REMOVE_BOT"; playerId: string; botId: string }
+  /** Server only: a bot starts playing for a player who stayed away, or hands their seat back. */
+  | { type: "BOT_TAKEOVER"; playerId: string }
+  | { type: "BOT_RELEASE"; playerId: string }
   /** Host: freeze the timer, start it again, add 30 seconds, or end the discussion now. */
   | { type: "PAUSE"; playerId: string }
   | { type: "RESUME"; playerId: string }

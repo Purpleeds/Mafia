@@ -296,7 +296,10 @@ describe("restart recovery", () => {
     grace?.fn();
     await new Promise((r) => setTimeout(r, 10));
     after = await store.get(room.roomCode);
-    expect(after?.state.players.filter((p) => p.connected).map((p) => p.id).sort()).toEqual([a, b].sort());
+    // The other three get a bot playing for them (the host's default), so the game goes on at full strength.
+    const players = after?.state.players ?? [];
+    expect(players.filter((p) => !p.botControlled).map((p) => p.id).sort()).toEqual([a, b].sort());
+    expect(players.filter((p) => p.botControlled)).toHaveLength(3);
     expect(after?.reconnecting).toEqual({});
   });
 });

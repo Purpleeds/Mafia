@@ -4,6 +4,7 @@ import { RoleIcon } from "../art/roles";
 import { ROLE_INFO } from "../lib/roles";
 import { fill, isGangMember, roleLabel, teamLabel } from "../lib/wording";
 import { AvatarBadge } from "./AvatarBadge";
+import { BotTag } from "./BotTag";
 
 /**
  * Privacy rule for these cards: every player in the game has exactly the same
@@ -13,7 +14,9 @@ import { AvatarBadge } from "./AvatarBadge";
  */
 
 function nameIn(view: GameView, id: string): string {
-  return view.players.find((p) => p.id === id)?.name ?? "Someone";
+  const player = view.players.find((p) => p.id === id);
+  if (!player) return "Someone";
+  return player.isBot ? `${player.name} (Bot)` : player.name;
 }
 
 function inGame(view: GameView): boolean {
@@ -49,6 +52,7 @@ export function MyRoleCard({ view }: { view: GameView }) {
             {teammates.map((t) => (
               <span key={t.id} className="flip-teammate">
                 <AvatarBadge avatar={t.avatar} size={22} /> {t.name}
+                <BotTag player={t} />
               </span>
             ))}
           </p>

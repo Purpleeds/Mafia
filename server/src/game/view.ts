@@ -43,10 +43,13 @@ export function getGameView(state: GameState, viewerId: string): GameView {
     avatar: { ...p.avatar },
     alive: p.alive,
     connected: p.connected,
-    connection: p.connected ? "online" : "offline",
+    // Someone a bot stands in for is away, even though their seat still plays.
+    connection: p.connected && !p.botControlled ? "online" : "offline",
     isHost: p.id === state.hostId,
     kicked: p.kicked,
     role: publicRole(p),
+    isBot: p.isBot,
+    botPlaying: p.botControlled,
     done:
       state.phase === "LOBBY"
         ? p.ready

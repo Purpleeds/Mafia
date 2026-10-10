@@ -30,4 +30,10 @@ export interface Room {
    * so nobody can detect activity hidden from them.
    */
   delivery: Record<string, { version: number; hash: string }>;
+  /**
+   * The room size the host chose with the bot buttons (players after their last
+   * add, remove or fill), or null. A real player joining a lobby at this size
+   * (or a full one) takes a bot's place, if the host allows that.
+   */
+  botTarget: number | null;
 }

@@ -1,5 +1,6 @@
 import {
   Ban,
+  Bot,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -130,6 +131,7 @@ const ICONS = {
   userMinus: UserMinus,
   online: Wifi,
   offline: WifiOff,
+  bot: Bot,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

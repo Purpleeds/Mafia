@@ -206,3 +206,28 @@ details.card > summary .field-hint { font-weight: 500; margin: 0; }
 .personal-settings { display: flex; flex-direction: column; gap: 4px; }
 .rejoin .card-lead { margin: 0; }
 .done-talking .btn { justify-content: center; }
+
+/* ---------------------------------------------------------------- bots */
+.bot-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.bot-tag-standin { border-style: dashed; }
+.pcard-name .bot-tag { margin-left: 4px; }
+.chat-name .bot-tag { margin-left: 4px; font-size: 0.68rem; }
+.bots-card .bots-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bots-card .bots-actions .btn { flex: 1 1 auto; }
+.bots-count { font-variant-numeric: tabular-nums; }

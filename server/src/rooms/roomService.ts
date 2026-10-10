@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
+  MAX_BOTS,
   MAX_PLAYERS,
   MAX_SPECTATORS,
+  MIN_PLAYERS,
+  nicknameKey,
+  validateNickname,
+  type BotCountResult,
   NARRATION_TIMEOUT_MS,
   containsLink,
   containsProfanity,
@@ -46,6 +51,8 @@ import {
 } from "../game/index.js";
 import type { Logger } from "../logger.js";
 import { narrationFacts } from "../narration/facts.js";
+import { freeBotName, randomBotAvatar } from "../bots/names.js";
+import type { BotAction, BotPort, BotResult, BotSink } from "../bots/port.js";
 import { AvatarStore, newAvatarId } from "./avatars.js";
 import { MAX_CHAT_HISTORY, canSeeInHistory, sanitizeChatText } from "./chatRules.js";
 import { digest, generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
@@ -117,6 +124,31 @@ const fail = <T = never>(code: ErrorCode, message: string): ServiceResult<T> => 
   error: { code, message },
 });
 
+/** Seats a bot plays right now: the host's bots, and players a bot stands in for. */
+function botSeatIds(state: GameState): string[] {
+  return state.players.filter((p) => !p.kicked && (p.isBot || p.botControlled)).map((p) => p.id);
+}
+
+function isBotSeat(state: GameState, id: string): boolean {
+  const p = state.players.find((x) => x.id === id);
+  return !!p && !p.kicked && (p.isBot || p.botControlled);
+}
+
+/** A real player who should get a bot instead of being marked away: in a running game, still in it, the host allowing it. */
+function shouldTakeOver(state: GameState, id: string): boolean {
+  const p = state.players.find((x) => x.id === id);
+  return (
+    !!p &&
+    state.settings.botTakeover &&
+    state.phase !== "LOBBY" &&
+    state.phase !== "GAME_OVER" &&
+    p.alive &&
+    !p.kicked &&
+    !p.isBot &&
+    !p.botControlled
+  );
+}
+
 const HOST_TIMER_ACTIONS = new Set<string>(["PAUSE", "RESUME", "ADD_TIME", "SKIP_TO_VOTING"]);
 
 const REMOVED_NOTICE: Record<RemovedReason, RoomNoticeKind> = {
@@ -151,7 +183,7 @@ function findMember(state: GameState, id: string) {
  * All work on a room runs inside a per-room lock, so events for the same room
  * are handled strictly one after another.
  */
-export class RoomService {
+export class RoomService implements BotPort {
   private readonly store: RoomStore;
   private readonly broadcaster: Broadcaster;
   private readonly scheduler: Scheduler;
@@ -173,6 +205,13 @@ export class RoomService {
   private readonly narrationAsked = new Map<string, string>();
   /** Uploaded avatar pictures: memory only, never in the room's saved copy. */
   readonly avatars = new AvatarStore();
+  /** Where bot seats get their deliveries (the bot manager). Null: bots sit still. */
+  private botSink: BotSink | null = null;
+
+  /** Connects the bots: from now on every bot seat gets exactly what its socket would get. */
+  attachBots(sink: BotSink | null): void {
+    this.botSink = sink;
+  }
 
   constructor(options: RoomServiceOptions) {
     this.store = options.store;
@@ -242,6 +281,7 @@ export class RoomService {
       disconnectedAt: {},
       reconnecting: {},
       delivery: {},
+      botTarget: null,
     });
     const created = (code: string): ServiceResult<SessionInfo> => {
       if (owner !== null) this.indexOwner(owner, code);
@@ -305,12 +345,15 @@ export class RoomService {
           return fail("WRONG_PASSWORD", "That password isn't right.");
         }
       }
+      const before = room.state;
+      const madeRoom = this.makeRoomForPerson(room, name);
       const playerId = newPlayerId();
       const sessionToken = newSessionToken();
       const prev = this.apply(room, { type: "JOIN", playerId, name, avatar });
-      if (!prev.ok) return prev;
+      if (!prev.ok) return prev; // nothing is saved: the bots stay as they were
       room.sessions[hashToken(sessionToken)] = playerId;
-      await this.commit(room, prev.value);
+      await this.commit(room, before);
+      if (madeRoom) this.logger.info("bots.replaced", { room: code, bot: madeRoom });
       const seat = room.state.players.some((p) => p.id === playerId) ? "player" : "spectator";
       this.logger.info("player.joined", { room: code, player: playerId, seat, players: room.state.players.length });
       return ok({ roomCode: code, playerId, sessionToken, seat });
@@ -335,6 +378,7 @@ export class RoomService {
     return this.withRoom(code, async (room) => {
       const member = findMember(room.state, memberId);
       if (!member) return fail("NOT_IN_ROOM", "You are not in this room.");
+      if (isBotSeat(room.state, memberId)) return ok(null);
       if (!member.connected || room.reconnecting[memberId] !== undefined) return ok(null);
       room.reconnecting[memberId] = this.clock();
       await this.publish(room);
@@ -349,6 +393,25 @@ export class RoomService {
       if (!member) return fail("NOT_IN_ROOM", "You are not in this room.");
       const wasReconnecting = room.reconnecting[memberId] !== undefined;
       delete room.reconnecting[memberId];
+      const player = room.state.players.find((p) => p.id === memberId);
+      if (player?.isBot) return ok(null);
+      if (player?.botControlled) {
+        // Away for a while and a bot has been playing: back now, so they take their seat back.
+        if (!connected) return ok(null);
+        const prev = this.apply(room, { type: "BOT_RELEASE", playerId: memberId });
+        if (!prev.ok) return prev;
+        delete room.disconnectedAt[memberId];
+        await this.commit(room, prev.value);
+        this.logger.info("bot.released", { room: code, player: memberId });
+        return ok(null);
+      }
+      if (!connected && shouldTakeOver(room.state, memberId)) {
+        const prev = this.apply(room, { type: "BOT_TAKEOVER", playerId: memberId });
+        if (!prev.ok) return prev;
+        await this.commit(room, prev.value, { activity: false });
+        this.logger.info("bot.takeover", { room: code, player: memberId });
+        return ok(null);
+      }
       if (member.connected === connected) {
         if (wasReconnecting) await this.publish(room);
         return ok(null);
@@ -365,7 +428,11 @@ export class RoomService {
 
   leave(code: string, memberId: string): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
-      const prev = this.apply(room, { type: "LEAVE", playerId: memberId });
+      // Leaving a running game: a bot plays on in the seat (if the host allows it), so the game isn't a player short.
+      const action: GameAction = shouldTakeOver(room.state, memberId)
+        ? { type: "BOT_TAKEOVER", playerId: memberId }
+        : { type: "LEAVE", playerId: memberId };
+      const prev = this.apply(room, action);
       if (!prev.ok) return prev;
       delete room.reconnecting[memberId];
       await this.commit(room, prev.value, { removedReason: "left" });
@@ -496,6 +563,130 @@ export class RoomService {
     return memberId;
   }
 
+  // ------------------------------------------------------------ bots (host controls)
+
+  /** Host, lobby: one more bot (at most 10, within the room's player limit). */
+  addBot(code: string, hostId: string): Promise<ServiceResult<BotCountResult>> {
+    return this.withRoom(code, async (room) => {
+      const before = room.state;
+      const added = this.applyAddBot(room, hostId);
+      if (!added.ok) return added;
+      room.botTarget = room.state.players.length;
+      await this.commit(room, before);
+      return ok(this.logBots(room, "bots.added", 1));
+    });
+  }
+
+  /** Host, lobby: just enough bots to reach the minimum number of players (5). */
+  fillBots(code: string, hostId: string): Promise<ServiceResult<BotCountResult>> {
+    return this.withRoom(code, async (room) => {
+      const before = room.state;
+      let added = 0;
+      while (room.state.players.length < MIN_PLAYERS) {
+        const result = this.applyAddBot(room, hostId);
+        if (!result.ok) {
+          if (added === 0) return result;
+          break;
+        }
+        added += 1;
+      }
+      if (added === 0 && room.state.hostId !== hostId) return fail("NOT_HOST", "Only the host can add bots.");
+      if (added === 0 && room.state.phase !== "LOBBY") return fail("WRONG_PHASE", "Bots can only join in the lobby.");
+      room.botTarget = room.state.players.length;
+      if (added > 0) await this.commit(room, before);
+      else await this.store.save(room);
+      return ok(this.logBots(room, "bots.filled", added));
+    });
+  }
+
+  /** Host, lobby: the newest bot leaves. */
+  removeBot(code: string, hostId: string): Promise<ServiceResult<BotCountResult>> {
+    return this.withRoom(code, async (room) => {
+      const newest = [...room.state.players].reverse().find((p) => p.isBot);
+      if (room.state.hostId !== hostId) return fail("NOT_HOST", "Only the host can remove bots.");
+      if (!newest) return fail("INVALID_TARGET", "There are no bots to remove.");
+      const prev = this.apply(room, { type: "REMOVE_BOT", playerId: hostId, botId: newest.id });
+      if (!prev.ok) return prev;
+      room.botTarget = room.state.players.length;
+      await this.commit(room, prev.value, { removedReason: "left" });
+      return ok(this.logBots(room, "bots.removed", 1));
+    });
+  }
+
+  private applyAddBot(room: Room, hostId: string): ServiceResult<GameState> {
+    const names = [...room.state.players, ...room.state.spectators].map((m) => m.name);
+    return this.apply(room, {
+      type: "ADD_BOT",
+      playerId: hostId,
+      botId: newPlayerId(),
+      name: freeBotName(names, this.rng),
+      avatar: randomBotAvatar(this.rng),
+    });
+  }
+
+  private logBots(room: Room, event: string, changed: number): BotCountResult {
+    const bots = room.state.players.filter((p) => p.isBot).length;
+    const players = room.state.players.length;
+    this.logger.info(event, { room: room.code, changed, bots, players });
+    return { bots, players };
+  }
+
+  /**
+   * Before a real player joins the lobby: a bot with the name they want takes
+   * another, and (if the host allows it) a bot leaves when the room is full or
+   * at the size the host filled it to. Returns the id of the bot that left.
+   */
+  private makeRoomForPerson(room: Room, rawName: string): string | null {
+    const { state } = room;
+    if (state.phase !== "LOBBY") return null;
+    const wanted = validateNickname(rawName);
+    if (wanted.ok) {
+      const clash = state.players.find((p) => p.isBot && nicknameKey(p.name) === nicknameKey(wanted.value));
+      if (clash) {
+        const names = [...state.players, ...state.spectators].map((m) => m.name).concat(wanted.value);
+        this.apply(room, { type: "UPDATE_PROFILE", playerId: clash.id, name: freeBotName(names, this.rng) });
+      }
+    }
+    const players = room.state.players;
+    const bots = players.filter((p) => p.isBot);
+    const atSize = players.length >= MAX_PLAYERS || (room.botTarget !== null && players.length >= room.botTarget);
+    const host = room.state.hostId;
+    if (!room.state.settings.replaceBots || bots.length === 0 || !atSize || host === null) return null;
+    const newest = bots[bots.length - 1];
+    if (!newest) return null;
+    return this.apply(room, { type: "REMOVE_BOT", playerId: host, botId: newest.id }).ok ? newest.id : null;
+  }
+
+  // ------------------------------------------------------------ bots (playing: the BotPort)
+
+  /**
+   * A bot's move for its own seat. Only seats a bot really plays are accepted,
+   * only the actions a human player could send, and the engine checks them
+   * exactly as it checks a human's (phase, role, life, targets).
+   */
+  botAct(code: string, seatId: string, action: BotAction): Promise<BotResult> {
+    const allowed = ["SET_READY", "ACK_ROLE", "NIGHT_ACTION", "CAST_VOTE", "SKIP_DISCUSSION"];
+    if (!allowed.includes((action as { type: string }).type)) {
+      return Promise.resolve(fail("BAD_REQUEST", "Bots can only play their own seat."));
+    }
+    return this.withRoom(code, async (room) => {
+      if (!isBotSeat(room.state, seatId)) return fail("NOT_IN_ROOM", "That seat isn't played by a bot.");
+      const prev = this.apply(room, { ...action, playerId: seatId } as GameAction);
+      if (!prev.ok) return prev;
+      // Bots don't keep a room alive: only people count as activity.
+      await this.commit(room, prev.value, { activity: false });
+      return ok(null);
+    });
+  }
+
+  botChat(code: string, seatId: string, text: string): Promise<BotResult> {
+    return this.sendChat(code, seatId, text, { bot: true });
+  }
+
+  botReact(code: string, seatId: string, reaction: ChatReaction): Promise<BotResult> {
+    return this.sendReaction(code, seatId, reaction, { bot: true });
+  }
+
   // ------------------------------------------------------------ playing
 
   /** Applies a member's action. The engine checks phase, host, life, role and target. */
@@ -520,8 +711,8 @@ export class RoomService {
   }
 
   /** A typed message. The server picks the channel from who the sender is. */
-  sendChat(code: string, memberId: string, rawText: string): Promise<ServiceResult<null>> {
-    return this.relayChat(code, memberId, (state) => {
+  sendChat(code: string, memberId: string, rawText: string, opts: { bot?: boolean } = {}): Promise<ServiceResult<null>> {
+    return this.relayChat(code, memberId, opts, (state) => {
       const cleaned = sanitizeChatText(rawText);
       if (cleaned === null) return fail("BAD_REQUEST", `Messages must be 1–${MAX_CHAT_LENGTH} characters.`);
       // Links are blocked at every filter level, uncensored included (spam and scam sites).
@@ -532,22 +723,30 @@ export class RoomService {
   }
 
   /** A quick reaction, routed exactly like typed text. */
-  sendReaction(code: string, memberId: string, reaction: ChatReaction): Promise<ServiceResult<null>> {
+  sendReaction(
+    code: string,
+    memberId: string,
+    reaction: ChatReaction,
+    opts: { bot?: boolean } = {},
+  ): Promise<ServiceResult<null>> {
     if (!(CHAT_REACTIONS as readonly string[]).includes(reaction)) {
       return Promise.resolve(fail("BAD_REQUEST", "Unknown reaction."));
     }
-    return this.relayChat(code, memberId, () => ok({ text: "", reaction }));
+    return this.relayChat(code, memberId, opts, () => ok({ text: "", reaction }));
   }
 
   private relayChat(
     code: string,
     memberId: string,
+    opts: { bot?: boolean },
     build: (state: GameState) => ServiceResult<{ text: string; reaction?: ChatReaction }>,
   ): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
       const { state } = room;
       const sender = findMember(state, memberId);
       if (!sender) return fail("NOT_IN_ROOM", "You are not in this room.");
+      // A bot only speaks for a seat a bot plays; a person never speaks through a bot seat.
+      if (opts.bot === true && !isBotSeat(state, memberId)) return fail("NOT_IN_ROOM", "That seat isn't played by a bot.");
       const channel = chatChannelFor(state, memberId);
       if (channel === null) return fail("CHAT_NOT_ALLOWED", "You can't send messages right now.");
       const content = build(state);
@@ -565,11 +764,11 @@ export class RoomService {
       };
       room.chat.push(message);
       if (room.chat.length > MAX_CHAT_HISTORY) room.chat.splice(0, room.chat.length - MAX_CHAT_HISTORY);
-      room.lastActivityAt = message.sentAt;
+      if (!opts.bot) room.lastActivityAt = message.sentAt;
       await this.store.save(room);
 
       for (const id of memberIds(state)) {
-        if (canRead(state, id, channel)) this.broadcaster.chat(code, id, message);
+        if (canRead(state, id, channel)) this.sendChatTo(room, id, message);
       }
       return ok(null);
     });
@@ -585,10 +784,8 @@ export class RoomService {
       // A fresh connection (or a refreshed page) has no pictures yet: send them all again.
       this.avatars.resetDelivered(code, memberId);
       this.deliverAvatars(room);
-      if (payload) this.broadcaster.state(code, memberId, payload);
-      this.broadcaster.chatHistory(code, memberId, {
-        messages: room.chat.filter((m) => canSeeInHistory(room.state, memberId, m)),
-      });
+      if (payload) this.sendState(room, memberId, payload);
+      this.sendHistory(room, memberId);
       return ok(null);
     });
   }
@@ -691,11 +888,17 @@ export class RoomService {
       await this.withRoom(code, async (room) => {
         const now = this.clock();
         for (const id of memberIds(room.state)) {
-          if (findMember(room.state, id)?.connected) room.reconnecting[id] = now;
+          if (findMember(room.state, id)?.connected && !isBotSeat(room.state, id)) room.reconnecting[id] = now;
         }
         room.emptySince = room.emptySince ?? now;
         if (room.ownerKey) this.indexOwner(room.ownerKey, room.code);
+        // Bots lost their memory with the old process: give each bot seat its view and chat again.
+        const botPayloads = botSeatIds(room.state).map((id) => [id, this.prepareDelivery(room, id, now, true)] as const);
         await this.store.save(room);
+        for (const [id, payload] of botPayloads) {
+          if (payload) this.botSink?.state(code, id, payload);
+          this.botSink?.chatHistory(code, id, { messages: room.chat.filter((m) => canSeeInHistory(room.state, id, m)) });
+        }
         this.scheduleTimer(room);
         this.scheduler.set(`${code}:recovery`, now + this.recoveryGraceMs, () => {
           void this.endRecoveryGrace(code, now).catch((err: unknown) =>
@@ -718,10 +921,11 @@ export class RoomService {
       const prev = room.state;
       for (const id of missing) {
         delete room.reconnecting[id];
-        const r = applyAction(room.state, { type: "DISCONNECT", playerId: id }, this.context());
+        const takeover = shouldTakeOver(room.state, id);
+        const r = applyAction(room.state, { type: takeover ? "BOT_TAKEOVER" : "DISCONNECT", playerId: id }, this.context());
         if (r.ok) {
           room.state = r.state;
-          room.disconnectedAt[id] = this.clock();
+          if (!takeover) room.disconnectedAt[id] = this.clock();
         }
       }
       await this.commit(room, prev, { activity: false });
@@ -789,10 +993,13 @@ export class RoomService {
       this.logPhaseChange(room, prev);
     }
 
-    const connected = [...state.players.filter((p) => !p.kicked), ...state.spectators].filter((m) => m.connected).length;
-    room.emptySince = connected > 0 ? null : (room.emptySince ?? now);
+    // Only people keep a room open: bots, and the bots standing in for players who are away, don't count.
+    const people = [...state.players.filter((p) => !p.kicked && !p.isBot && !p.botControlled), ...state.spectators];
+    room.emptySince = people.some((m) => m.connected) ? null : (room.emptySince ?? now);
 
-    if (remaining.size === 0) {
+    // Nobody but bots left (no real player, not even one who is away): the room closes.
+    const humans = memberIds(state).filter((id) => !state.players.some((p) => p.id === id && p.isBot));
+    if (remaining.size === 0 || humans.length === 0) {
       await this.close(room, "empty", gone);
       return;
     }
@@ -805,8 +1012,20 @@ export class RoomService {
     }
 
     const outgoing = this.prepareDeliveries(room, now);
+    // A seat a bot has just started playing gets its full view now, whatever changed.
+    const botsBefore = new Set(botSeatIds(prev));
+    const botsNow = botSeatIds(state);
+    const newBotSeats = botsNow.filter((id) => !botsBefore.has(id));
+    for (const id of newBotSeats) {
+      if (outgoing.some(([o]) => o === id)) continue;
+      const payload = this.prepareDelivery(room, id, now, true);
+      if (payload) outgoing.push([id, payload]);
+    }
     await this.store.save(room);
     this.scheduleTimer(room);
+
+    // Seats no longer played by a bot (removed, or their player is back): the bots let go first.
+    for (const id of botsBefore) if (!botsNow.includes(id)) this.botSink?.release(room.code, id);
 
     const reason = opts.removedReason ?? "dropped";
     for (const id of gone) this.broadcaster.removed(room.code, id, { reason, message: REMOVED_MESSAGES[reason] });
@@ -814,7 +1033,8 @@ export class RoomService {
       this.broadcaster.removed(room.code, id, { reason: "kicked", message: REMOVED_MESSAGES.kicked });
     }
     this.deliverAvatars(room);
-    for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
+    for (const [id, payload] of outgoing) this.sendState(room, id, payload);
+    for (const id of newBotSeats) this.sendHistory(room, id);
     this.sendNotices(room, prev, gone, newlyKicked, reason);
 
     // A result was just announced: ask the host's browser for the narration (or settle for a ready-made line).
@@ -823,11 +1043,7 @@ export class RoomService {
     // Someone just eliminated can now read the graveyard: give them its history (and drop Mafia chat).
     for (const p of state.players) {
       const wasAlive = prev.players.some((q) => q.id === p.id && q.alive);
-      if (wasAlive && !p.alive && !p.kicked) {
-        this.broadcaster.chatHistory(room.code, p.id, {
-          messages: room.chat.filter((m) => canSeeInHistory(state, p.id, m)),
-        });
-      }
+      if (wasAlive && !p.alive && !p.kicked) this.sendHistory(room, p.id);
     }
   }
 
@@ -842,7 +1058,27 @@ export class RoomService {
     const outgoing = this.prepareDeliveries(room, this.clock());
     await this.store.save(room);
     this.deliverAvatars(room);
-    for (const [id, payload] of outgoing) this.broadcaster.state(room.code, id, payload);
+    for (const [id, payload] of outgoing) this.sendState(room, id, payload);
+  }
+
+  /**
+   * Every delivery to a member goes through these: to their socket, and, for a
+   * seat a bot plays, the very same payload to the bot. Nothing else reaches a bot.
+   */
+  private sendState(room: Room, id: string, payload: GameStatePayload): void {
+    this.broadcaster.state(room.code, id, payload);
+    if (isBotSeat(room.state, id)) this.botSink?.state(room.code, id, payload);
+  }
+
+  private sendChatTo(room: Room, id: string, message: ChatMessage): void {
+    this.broadcaster.chat(room.code, id, message);
+    if (isBotSeat(room.state, id)) this.botSink?.chat(room.code, id, message);
+  }
+
+  private sendHistory(room: Room, id: string): void {
+    const payload = { messages: room.chat.filter((m) => canSeeInHistory(room.state, id, m)) };
+    this.broadcaster.chatHistory(room.code, id, payload);
+    if (isBotSeat(room.state, id)) this.botSink?.chatHistory(room.code, id, payload);
   }
 
   /** Which pictures a member may see: approved ones (unless pictures are off), their own, and, for the host, those waiting. */
@@ -879,9 +1115,13 @@ export class RoomService {
     const notices: RoomNoticePayload[] = [];
     const before = new Map([...prev.players, ...prev.spectators].map((m) => [m.id, m]));
     const now = [...state.players, ...state.spectators];
+    const botFlag = (m: { id: string }) => (prev.players.concat(state.players).some((p) => p.id === m.id && p.isBot) ? { isBot: true } : {});
     for (const id of gone) {
       const m = before.get(id);
-      if (m) notices.push({ kind: REMOVED_NOTICE[reason], playerId: id, name: m.name });
+      // A bot only ever leaves (the host removed it, or it made space for a person).
+      if (!m) continue;
+      const bot = botFlag(m);
+      notices.push({ kind: bot.isBot ? "left" : REMOVED_NOTICE[reason], playerId: id, name: m.name, ...bot });
     }
     for (const id of newlyKicked) {
       const m = before.get(id);
@@ -889,12 +1129,19 @@ export class RoomService {
     }
     for (const m of now) {
       const was = before.get(m.id);
-      if (!was) notices.push({ kind: "joined", playerId: m.id, name: m.name });
+      if (!was) notices.push({ kind: "joined", playerId: m.id, name: m.name, ...botFlag(m) });
       else if (was.connected && !m.connected && !newlyKicked.includes(m.id)) {
         // Leaving a running game keeps the seat as "away", but everyone should hear they left on purpose.
         notices.push({ kind: reason === "left" ? "left" : "disconnected", playerId: m.id, name: m.name });
       }
       else if (!was.connected && m.connected) notices.push({ kind: "reconnected", playerId: m.id, name: m.name });
+    }
+    // "A bot is now playing for Sam." / "Sam is back."
+    for (const p of state.players) {
+      const was = prev.players.find((q) => q.id === p.id);
+      if (!was || p.kicked) continue;
+      if (!was.botControlled && p.botControlled) notices.push({ kind: "bot_takeover", playerId: p.id, name: p.name });
+      if (was.botControlled && !p.botControlled) notices.push({ kind: "bot_released", playerId: p.id, name: p.name });
     }
     const host = state.hostId === null ? undefined : state.players.find((p) => p.id === state.hostId);
     if (host && prev.hostId !== null && prev.hostId !== state.hostId) {
@@ -984,7 +1231,7 @@ export class RoomService {
 
     const host = state.hostId === null ? undefined : state.players.find((p) => p.id === state.hostId);
     const facts = narrationFacts(state);
-    if (!host || !host.connected || !facts) {
+    if (!host || !host.connected || host.botControlled || !facts) {
       await this.finishNarration(room, null, "host_away");
       return;
     }
@@ -1017,6 +1264,7 @@ export class RoomService {
     this.scheduler.clear(room.code);
     this.narrationAsked.delete(room.code);
     this.avatars.removeRoom(room.code);
+    for (const id of botSeatIds(room.state)) this.botSink?.release(room.code, id);
     if (room.ownerKey) {
       const codes = this.roomsByOwner.get(room.ownerKey);
       codes?.delete(room.code);

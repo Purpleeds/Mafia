@@ -2,54 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import type { DevDebugSnapshot } from "@mafia/shared";
 import { friendlyError } from "../lib/errors";
 import { useDevMode } from "../lib/dev";
-import { useAction } from "../lib/useAction";
 import { call } from "../net/socket";
 import { useAppState } from "../state/store";
-import { ErrorText } from "./ErrorText";
-
-/**
- * Lobby card with the bot buttons. Only exists in development: the server
- * refuses the events in production, and this card isn't rendered there.
- */
-export function DevBotsCard({ playerCount }: { playerCount: number }) {
-  const dev = useDevMode();
-  const action = useAction();
-  const [note, setNote] = useState<string | null>(null);
-  if (!dev) return null;
-
-  const add = (count?: number) =>
-    void action.run(async () => {
-      const result = await call("dev:fillBots", count === undefined ? {} : { count });
-      if (result.ok) setNote(`${result.data.added} bot${result.data.added === 1 ? "" : "s"} joined (${result.data.players} players).`);
-      return result;
-    });
-
-  return (
-    <section className="card dev-card" aria-labelledby="dev-bots-title">
-      <h2 id="dev-bots-title" className="card-title">
-        Development tools
-      </h2>
-      <p className="field-hint">
-        Bots join as normal players, take random night actions, vote at random and chat now and then. Only available
-        while the server isn't in production.
-      </p>
-      <div className="dev-actions">
-        <button type="button" className="btn btn-primary" disabled={action.pending} onClick={() => add()}>
-          Fill with bots
-        </button>
-        <button type="button" className="btn" disabled={action.pending || playerCount >= 20} onClick={() => add(1)}>
-          Add a bot
-        </button>
-      </div>
-      {note ? (
-        <p className="field-hint" role="status">
-          {note}
-        </p>
-      ) : null}
-      <ErrorText error={action.error} />
-    </section>
-  );
-}
 
 /** A collapsible view of any JSON value. */
 function JsonNode({ name, value, depth }: { name: string | null; value: unknown; depth: number }): ReactNode {

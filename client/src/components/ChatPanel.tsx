@@ -62,6 +62,7 @@ export function ChatPanel({ view, roomCode }: { view: GameView; roomCode: string
         onSend={canWrite ? send : null}
         onReact={canWrite ? react : null}
         avatarOf={avatarOf}
+        isBot={(id) => view.players.some((p) => p.id === id && p.isBot)}
         placeholder={active === "graveyard" ? words.outChatPlaceholder : "Message the town"}
         readOnlyNote={
           active === "public" && you && !you.alive

@@ -5,22 +5,12 @@ import {
   defaultSettings,
   matchingPreset,
   presetPatch,
-  type Avatar,
   type ContentMode,
   type PresetId,
 } from "@mafia/shared";
 import { describe, expect, it } from "vitest";
-import { BotManager } from "../dev/bots.js";
-import { makeService } from "../rooms/testing/fakes.js";
-import { mulberry32 } from "./index.js";
+import { botTable, must } from "../bots/testing/sim.js";
 import { mergeSettings } from "./settings.js";
-
-const AVATAR: Avatar = { color: "teal", seed: "fox" };
-
-function must<T>(result: { ok: true; value: T } | { ok: false; error: { code: string; message: string } }): T {
-  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
-  return result.value;
-}
 
 describe("game presets", () => {
   it("are all accepted by the server's settings rules, unchanged", () => {
@@ -81,23 +71,14 @@ describe("game presets", () => {
 
 describe("playing each preset", () => {
   async function play(id: PresetId, mode: ContentMode, players: number) {
-    const env = makeService();
-    const bots = new BotManager(env.service, env.store, env.logger, { rng: mulberry32(9), actChance: 0.9, chatChance: 0.2 });
-    const host = must(await env.service.createRoom("Host", AVATAR));
-    const code = host.roomCode;
-    must(await env.service.act(code, { type: "UPDATE_SETTINGS", playerId: host.playerId, settings: { contentMode: mode } }));
-    must(await env.service.act(code, { type: "UPDATE_SETTINGS", playerId: host.playerId, settings: presetPatch(id) }));
-    must(await bots.addBots(code, host.playerId, players - 1));
-    const started = await env.service.act(code, { type: "START_GAME", playerId: host.playerId });
+    const t = botTable(9);
+    const { code, hostId } = await t.room(players, { contentMode: mode, soloPractice: true });
+    must(await t.env.service.act(code, { type: "UPDATE_SETTINGS", playerId: hostId, settings: presetPatch(id) }));
+    const started = await t.env.service.act(code, { type: "START_GAME", playerId: hostId });
     if (!started.ok) return { started, final: undefined };
-    for (let step = 0; step < 500; step++) {
-      const state = (await env.store.get(code))?.state;
-      if (!state || state.phase === "GAME_OVER") break;
-      if (state.phase === "ROLE_REVEAL") await env.service.act(code, { type: "ACK_ROLE", playerId: host.playerId });
-      for (let i = 0; i < 3; i++) await bots.think(code);
-      await env.fireTimer(code);
-    }
-    return { started, final: (await env.store.get(code))?.state };
+    must(await t.env.service.act(code, { type: "ACK_ROLE", playerId: hostId }));
+    await t.runUntil(code, async () => (await t.state(code))?.phase === "GAME_OVER");
+    return { started, final: await t.state(code) };
   }
 
   for (const mode of ["safe", "normal"] as ContentMode[]) {

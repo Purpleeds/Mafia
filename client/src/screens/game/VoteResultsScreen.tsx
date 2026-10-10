@@ -42,7 +42,7 @@ export function VoteResultsScreen({ received }: PhaseProps) {
                     {voters.length > 0 ? (
                       <div className="voter-row">
                         {voters.map((v) =>
-                          v ? <AvatarBadge key={v.id} avatar={v.avatar} size={24} label={`${v.name} voted ${label}`} /> : null,
+                          v ? <AvatarBadge key={v.id} avatar={v.avatar} size={24} label={`${v.name}${v.isBot ? " (Bot)" : ""} voted ${label}`} /> : null,
                         )}
                       </div>
                     ) : null}

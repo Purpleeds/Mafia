@@ -197,13 +197,9 @@ export interface NarratorSubmitPayload {
 // These exist only while the server runs with dev tools on (never in production);
 // otherwise the server answers "Unknown event.".
 
-/** Adds bot players to the lobby. With no count, fills the room to 8 players. */
-export interface DevFillBotsPayload {
-  count?: number;
-}
-
-export interface DevFillBotsResult {
-  added: number;
+/** After the host adds, removes or fills bots: how many there are now, and players in all. */
+export interface BotCountResult {
+  bots: number;
   players: number;
 }
 
@@ -220,7 +216,7 @@ export interface DevDebugSnapshot {
 }
 
 /** The dev-only events, kept apart from CLIENT_EVENTS so production can't receive them. */
-export const DEV_EVENTS = ["dev:fillBots", "dev:debugState"] as const;
+export const DEV_EVENTS = ["dev:debugState"] as const;
 
 export interface TimeSyncPayload {
   /** The client's Date.now() when it sent the request (echoed back). */
@@ -297,13 +293,19 @@ export type RoomNoticeKind =
   | "host_changed"
   | "avatar_approved"
   | "avatar_rejected"
-  | "avatar_removed";
+  | "avatar_removed"
+  /** A bot started playing for someone who stayed away. */
+  | "bot_takeover"
+  /** They came back and play their own seat again. */
+  | "bot_released";
 
 export interface RoomNoticePayload {
   kind: RoomNoticeKind;
   /** Who it is about. */
   playerId: string;
   name: string;
+  /** The person is a bot (so "joined" and "left" can say so). */
+  isBot?: boolean;
 }
 
 export type RemovedReason = "left" | "kicked" | "dropped" | "room_closed";
@@ -353,6 +355,10 @@ export interface ClientToServerEvents {
   "host:resume": (payload: EmptyPayload, ack: Ack) => void;
   "host:addTime": (payload: EmptyPayload, ack: Ack) => void;
   "host:skipToVoting": (payload: EmptyPayload, ack: Ack) => void;
+  /** Lobby, host only: one more bot, the newest bot out, or just enough bots for the minimum. */
+  "host:addBot": (payload: EmptyPayload, ack: Ack<BotCountResult>) => void;
+  "host:removeBot": (payload: EmptyPayload, ack: Ack<BotCountResult>) => void;
+  "host:fillBots": (payload: EmptyPayload, ack: Ack<BotCountResult>) => void;
   // playing
   "game:ackRole": (payload: EmptyPayload, ack: Ack) => void;
   "game:nightAction": (payload: NightActionPayload, ack: Ack) => void;
@@ -362,8 +368,6 @@ export interface ClientToServerEvents {
   "chat:react": (payload: ChatReactPayload, ack: Ack) => void;
   "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
-  /** Dev tools only. */
-  "dev:fillBots": (payload: DevFillBotsPayload, ack: Ack<DevFillBotsResult>) => void;
   /** Dev tools only. */
   "dev:debugState": (payload: Record<string, never>, ack: Ack<DevDebugSnapshot>) => void;
 }
@@ -410,6 +414,9 @@ export const CLIENT_EVENTS = [
   "host:resume",
   "host:addTime",
   "host:skipToVoting",
+  "host:addBot",
+  "host:removeBot",
+  "host:fillBots",
   "game:ackRole",
   "game:nightAction",
   "game:vote",

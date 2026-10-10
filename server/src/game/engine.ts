@@ -1,7 +1,9 @@
 import {
   ADD_TIME_SECONDS,
+  MAX_BOTS,
   MAX_PHASE_REMAINING_SECONDS,
   MAX_PLAYERS,
+  MIN_HUMANS,
   MAX_SPECTATORS,
   MIN_PLAYERS,
   VOTE_LAST_CALL_SECONDS,
@@ -70,6 +72,14 @@ function dispatch(s: GameState, a: GameAction, env: GameEnv): GameError | null {
       return vote(s, a.playerId, a.targetId);
     case "SET_READY":
       return setReady(s, a.playerId, a.ready);
+    case "ADD_BOT":
+      return addBot(s, a.playerId, a.botId, a.name, a.avatar);
+    case "REMOVE_BOT":
+      return removeBot(s, a.playerId, a.botId);
+    case "BOT_TAKEOVER":
+      return botTakeover(s, a.playerId);
+    case "BOT_RELEASE":
+      return botRelease(s, a.playerId);
     case "PAUSE":
       return pause(s, a.playerId, env);
     case "RESUME":
@@ -118,8 +128,9 @@ function checkName(s: GameState, raw: unknown, exceptId?: string): { name: strin
   return { name: result.value };
 }
 
+/** A present, real player: bots, and players a bot is standing in for, can't host. */
 function canBeHost(p: PlayerState): boolean {
-  return p.connected && !p.kicked;
+  return p.connected && !p.kicked && !p.isBot && !p.botControlled;
 }
 
 /**
@@ -143,8 +154,9 @@ function ensureHost(s: GameState, fromIndex?: number): void {
       return;
     }
   }
-  // Nobody is present: keep the current host if they're still in the room.
-  if (!current) s.hostId = s.players[0]?.id ?? null;
+  // Nobody is present: keep the current host if they're still in the room, otherwise the first real
+  // player (never a bot; with none, the next person to join becomes host).
+  if (!current) s.hostId = s.players.find((p) => !p.isBot)?.id ?? null;
 }
 
 // ------------------------------------------------------------ lobby & presence
@@ -168,6 +180,8 @@ function join(s: GameState, playerId: string, rawName: string, avatar: Avatar): 
       ackedRole: false,
       kicked: false,
       ready: false,
+      isBot: false,
+      botControlled: false,
     });
     if (s.hostId === null) s.hostId = playerId;
     return null;
@@ -323,6 +337,13 @@ function startGame(s: GameState, playerId: string, env: GameEnv): GameError | nu
   const playing = s.players.filter((p) => p.connected);
   const n = playing.length;
   if (n < MIN_PLAYERS) return err("NOT_ENOUGH_PLAYERS", `You need at least ${MIN_PLAYERS} connected players.`);
+  const humans = playing.filter((p) => !p.isBot).length;
+  if (humans < MIN_HUMANS && !s.settings.soloPractice) {
+    return err(
+      "NOT_ENOUGH_PLAYERS",
+      `You need at least ${MIN_HUMANS} real players. Turn on solo practice to play with just bots.`,
+    );
+  }
 
   const { mafiaCount: setting, optionalRoles } = s.settings;
   const mafiaCount = setting === "auto" ? defaultMafiaCount(n) : setting;
@@ -352,12 +373,22 @@ function restart(s: GameState, playerId: string): GameError | null {
   if (s.phase !== "GAME_OVER") return err("WRONG_PHASE", "The game isn't over yet.");
   const notHost = requireHost(s, playerId, "start a new game");
   if (notHost) return notHost;
-  s.players = s.players.filter((p) => p.connected && !p.kicked);
+  // Players a bot was standing in for were away at the end: they leave like any absent player.
+  s.players = s.players.filter((p) => p.connected && !p.kicked && !p.botControlled);
   const waiting = s.spectators.filter((p) => p.connected);
   s.spectators = [];
   for (const spectator of waiting) {
     if (s.players.length < MAX_PLAYERS) {
-      s.players.push({ ...spectator, role: null, alive: true, ackedRole: false, kicked: false, ready: false });
+      s.players.push({
+        ...spectator,
+        role: null,
+        alive: true,
+        ackedRole: false,
+        kicked: false,
+        ready: false,
+        isBot: false,
+        botControlled: false,
+      });
     } else {
       s.spectators.push(spectator);
     }
@@ -406,6 +437,72 @@ function setReady(s: GameState, playerId: string, ready: boolean): GameError | n
   const player = activePlayer(s, playerId);
   if ("code" in player) return player;
   player.ready = ready;
+  return null;
+}
+
+// ------------------------------------------------------------ bots
+
+/** Host, lobby: a bot joins as an ordinary player, ready to play. */
+function addBot(s: GameState, playerId: string, botId: string, rawName: string, avatar: Avatar): GameError | null {
+  if (s.phase !== "LOBBY") return err("WRONG_PHASE", "Bots can only join in the lobby.");
+  const notHost = requireHost(s, playerId, "add bots");
+  if (notHost) return notHost;
+  if (!isValidPlayerId(botId) || findMember(s, botId)) return err("INVALID_ID", "Invalid bot id.");
+  if (!isAvatar(avatar)) return err("INVALID_AVATAR", "Pick an avatar colour and look.");
+  if (s.players.filter((p) => p.isBot).length >= MAX_BOTS) {
+    return err("ROOM_FULL", `A room can have at most ${MAX_BOTS} bots.`);
+  }
+  if (s.players.length >= MAX_PLAYERS) return err("ROOM_FULL", `The room is full (${MAX_PLAYERS} players).`);
+  const checked = checkName(s, rawName);
+  if ("code" in checked) return checked;
+  s.players.push({
+    id: botId,
+    name: checked.name,
+    avatar: { color: avatar.color, seed: avatar.seed },
+    role: null,
+    alive: true,
+    connected: true,
+    ackedRole: false,
+    kicked: false,
+    ready: true,
+    isBot: true,
+    botControlled: false,
+  });
+  return null;
+}
+
+/** Host, lobby: a bot leaves. */
+function removeBot(s: GameState, playerId: string, botId: string): GameError | null {
+  if (s.phase !== "LOBBY") return err("WRONG_PHASE", "Bots can only be removed in the lobby.");
+  const notHost = requireHost(s, playerId, "remove bots");
+  if (notHost) return notHost;
+  if (!findPlayer(s, botId)?.isBot) return err("INVALID_TARGET", "That isn't a bot.");
+  removePlayer(s, botId);
+  return null;
+}
+
+/**
+ * Server only: a real player has stayed away past the grace period during a
+ * game, so a bot plays their seat (with exactly their view). They stay present
+ * for the game, but hosting passes to someone who is really here.
+ */
+function botTakeover(s: GameState, playerId: string): GameError | null {
+  if (s.phase === "LOBBY" || s.phase === "GAME_OVER") return err("WRONG_PHASE", "Bots only stand in during a game.");
+  const player = findPlayer(s, playerId);
+  if (!player || player.isBot || player.kicked || !player.alive) return err("INVALID_TARGET", "No bot is needed for that seat.");
+  player.botControlled = true;
+  player.connected = true;
+  ensureHost(s);
+  return null;
+}
+
+/** Server only: the player is back and plays their own seat again. */
+function botRelease(s: GameState, playerId: string): GameError | null {
+  const player = findPlayer(s, playerId);
+  if (!player?.botControlled) return err("INVALID_TARGET", "No bot is playing that seat.");
+  player.botControlled = false;
+  player.connected = true;
+  ensureHost(s);
   return null;
 }
 

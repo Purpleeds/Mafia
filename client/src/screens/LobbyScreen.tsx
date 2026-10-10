@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { MAX_PLAYERS, MIN_PLAYERS, effectiveChatFilter, type GameView } from "@mafia/shared";
+import { MAX_PLAYERS, MIN_HUMANS, MIN_PLAYERS, effectiveChatFilter, type GameView } from "@mafia/shared";
 import { Icon } from "../art/icons";
 import { UncensoredNotice } from "../components/ChatNotices";
 import { ErrorText } from "../components/ErrorText";
+import { BotsCard } from "../components/BotsCard";
 import { AvatarRequests } from "../components/PhotoControls";
 import { PhaseHint } from "../components/PhaseHint";
 import { HelpSheet } from "../components/HelpSheet";
@@ -11,7 +12,6 @@ import { LeaveRoomButton } from "../components/LeaveRoomButton";
 import { PlayerList, SpectatorList } from "../components/PlayerList";
 import { ProfileEditor } from "../components/ProfileEditor";
 import { RoomHeader } from "../components/RoomHeader";
-import { DevBotsCard } from "../components/DevTools";
 import { PasswordEditor, SettingsEditor } from "../components/SettingsEditor";
 import { SettingsSummary } from "../components/SettingsSummary";
 import { haptic } from "../lib/haptics";
@@ -65,7 +65,8 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
               <PlayerList players={view.players} youId={you?.id ?? null} viewerIsHost={isHost} phase={view.phase} />
               {playerCount < MIN_PLAYERS ? (
                 <p className="field-hint">
-                  Need at least {MIN_PLAYERS} players – invite {MIN_PLAYERS - playerCount} more.
+                  Need at least {MIN_PLAYERS} players – invite {MIN_PLAYERS - playerCount} more
+                  {isHost ? ", or add bots below." : "."}
                 </p>
               ) : null}
             </section>
@@ -78,6 +79,12 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
           {isHost ? (
             <Block order={2}>
               <AvatarRequests view={view} />
+            </Block>
+          ) : null}
+
+          {isHost ? (
+            <Block order={2}>
+              <BotsCard view={view} />
             </Block>
           ) : null}
 
@@ -107,10 +114,13 @@ export function LobbyScreen({ received }: { received: ReceivedState }) {
               <>
                 <SettingsEditor settings={view.settings} playerCount={playerCount} />
                 <PasswordEditor hasPassword={room.hasPassword} />
-                <DevBotsCard playerCount={playerCount} />
               </>
             ) : (
-              <SettingsSummary settings={view.settings} playerCount={playerCount} />
+              <SettingsSummary
+                settings={view.settings}
+                playerCount={playerCount}
+                botCount={view.players.filter((p) => p.isBot).length}
+              />
             )}
           </Block>
         </div>
@@ -177,10 +187,13 @@ function StartPanel({
       </section>
     );
   }
+  const people = view.players.filter((p) => !p.isBot).length;
   const reason =
     connectedCount < MIN_PLAYERS
-      ? `Needs at least ${MIN_PLAYERS} connected players (${connectedCount} now).`
-      : null;
+      ? `Needs at least ${MIN_PLAYERS} connected players (${connectedCount} now). Invite friends or add bots.`
+      : people < MIN_HUMANS && !view.settings.soloPractice
+        ? `Needs at least ${MIN_HUMANS} real players. Turn on solo practice in Bots to play with just bots.`
+        : null;
   const glow = reason === null && allReady;
   return (
     <section className={`card${glow ? " card-ready" : ""}`}>

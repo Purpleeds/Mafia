@@ -123,6 +123,10 @@ export function saveHostSettings(settings: GameSettings): void {
     customAvatars: settings.customAvatars,
     sneakyGang: settings.sneakyGang,
     aiNarrator: settings.aiNarrator,
+    botDifficulty: settings.botDifficulty,
+    soloPractice: settings.soloPractice,
+    replaceBots: settings.replaceBots,
+    botTakeover: settings.botTakeover,
   };
   const text = JSON.stringify(patch);
   try {

@@ -2,6 +2,7 @@ import type { ConnectionStatus, Phase, PublicPlayerView, SpectatorView } from "@
 import { Icon } from "../art/icons";
 import { CONNECTION_LABEL } from "../lib/labels";
 import { AvatarBadge } from "./AvatarBadge";
+import { BotTag } from "./BotTag";
 import { PlayerMenu } from "./PlayerMenu";
 import { OUTSIDE_A_ROOM, roleLabel, wordsFor, type WordingSettings } from "../lib/wording";
 
@@ -49,6 +50,7 @@ export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = []
             <div className="player-info">
               <div className="player-name">
                 <span className="name-text">{p.name}</span>
+                <BotTag player={p} />
                 {isYou ? <span className="you-tag"> (you)</span> : null}
                 {p.isHost ? (
                   <span className="host-tag" title="Host">
@@ -59,7 +61,7 @@ export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = []
                 ) : null}
               </div>
               <div className="player-tags">
-                <ConnectionTag status={p.connection} />
+                {p.isBot ? null : <ConnectionTag status={p.connection} />}
                 {inGame ? (
                   p.kicked ? (
                     <span className="tag tag-out">Removed by host</span>
@@ -86,7 +88,7 @@ export function PlayerList({ players, youId, viewerIsHost, phase, fadingIds = []
                 playerId={p.id}
                 name={p.name}
                 viewerIsHost={viewerIsHost}
-                canMakeHost={p.connected}
+                canMakeHost={p.connected && !p.isBot && !p.botPlaying}
                 hasPhoto={!!p.avatar.photo}
               />
             ) : null}

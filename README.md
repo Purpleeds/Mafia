@@ -238,20 +238,52 @@ In the lobby (or on the create/join form) a player can use their drawn avatar or
 - **Loading and errors**: every wait has a spinner and words, a screen that hits a bug shows a "Reload" card instead of going
   blank, and errors are friendly sentences (technical server messages are never shown).
 
+## Bots
+
+When there aren't enough players, the host can fill seats with bots from the **Bots** card in the lobby:
+
+- **Add bot**, **Remove bot** (the newest one) and **Fill to 5** (just enough bots to reach the 5-player minimum). At most 10
+  bots per room, and the room's 20-player limit still applies.
+- **Bot difficulty**: *Easy* (mostly random choices) or *Normal* (the reasoning below).
+- **Solo practice** (off by default): a game needs at least 2 real players, unless the host turns this on to play alone with bots.
+- **Replace a bot when someone joins** (on by default): when a person joins a lobby that is full, or at the size the host filled
+  it to, the newest bot leaves to make space. A bot that has the name a person wants takes another one.
+- **Bot takes over for disconnected players** (on by default): if a player stays disconnected past the 60-second grace period
+  (or leaves) during a game, a bot plays their seat with exactly what they knew. Everyone sees "A bot is now playing for Sam.",
+  and their name shows *Bot playing*. When they reconnect they get the seat back ("Sam is back and playing again."). Hosting
+  always passes to a person.
+
+Bots get a fun name from a built-in list (never one a person in the room has), a generated avatar, and a small **Bot** label
+wherever their name appears: the player list and cards, votes, chat, notes, teammates and the game-over screen.
+
+**Fair play.** The bot code (`server/src/bots/`) can't see the game. The room service hands each bot seat exactly the payloads
+it sends that seat's socket (its personal `game:state` view, the chat it may read, its chat history) through a `BotSink`, and
+the bots act only through a `BotPort`: the same validated actions a human sends (`SET_READY`, `ACK_ROLE`, `NIGHT_ACTION`,
+`CAST_VOTE`, `SKIP_DISCUSSION`, chat and reactions), checked by the engine like any player's. The bot module imports only the
+shared types, its own files and the logger, and a test checks that. Bots wait a random 4–15 s before a night action or a vote
+(a few seconds to get ready or acknowledge a role), so how fast a phase ends doesn't give away who has a night role.
+
+**How Normal bots play.** Each bot keeps its own suspicion score for every other player, from public information only: who
+voted for whom (when votes are shown), who was eliminated and their role (when revealed), accusations and Detective claims in
+chat, players who were taken at night (whoever they accused looks worse), and votes that match an eliminated Mafia member's.
+
+- Mafia bots go along with a human teammate's pick (and tell human teammates in the Mafia chat who they want), never pick
+  each other, prefer whoever is onto them or claims to be the Detective, and rarely vote for a teammate.
+- Doctor bots protect a claimed Detective, sometimes themselves, otherwise someone they trust (never the same person twice in a row).
+- Detective bots investigate the most suspicious players they haven't checked, and when they find the Mafia they sometimes say
+  so in the day chat ("I checked Sam. They're Mafia.").
+- Everyone else votes for the most suspicious player, follows strong accusations, and sometimes skips when unsure.
+- A few chat lines per day at most (6 for all bots in a room per phase), from separate Safe Mode and Normal Mode line sets, with
+  random delays. No emoji. Bots standing in for a person never chat.
+
 ## Testing alone (development tools)
 
 Everything here exists only while the server is **not** in production: `NODE_ENV` isn't `production` and `RENDER` isn't `true`
 (`npm run dev` and a local `npm start` qualify; Render doesn't). In production the dev events are unknown events, `/dev-config`
-answers `{ "dev": false }` and the client shows none of it.
+answers `{ "dev": false }` and the client shows none of it. (Bots themselves are a normal feature, see above.)
 
-- **Fill with bots**: a "Development tools" card in the host's lobby. *Fill with bots* brings the room up to 8 players, *Add a
-  bot* adds one. Bots join through the same service call as a browser, so they are normal players (named "Bot Ada", "Bot Bo"…).
-  Every 1.5 s each bot looks at its own view and maybe acts: it taps Ready in the lobby, acknowledges its role, is happy to be "done talking", takes a random valid night action (the
-  Mafia pick a victim, the Doctor protects, Cupid links two players…), votes at random (sometimes skip) and now and then chats or
-  reacts, only where the server's chat rules let it (day chat, Mafia whisper at night, spectator chat once eliminated). They never
-  use hidden state they shouldn't know and they go through the engine's normal validation. See `server/src/dev/bots.ts`.
 - **Debug panel**: a small *Debug* button at the bottom left of any room screen opens the server's whole game state: a table of
-  players with their secret roles (bots marked), the phase, round and timer, and the raw state as a collapsible tree. It refreshes
+  players with their secret roles (bot seats marked), the phase, round and timer, and the raw state as a collapsible tree. It refreshes
   by itself when the game changes, and has *Copy JSON*. (`dev:debugState`, any member of the room.)
 - **Several real players**: open the site in more tabs, or in incognito windows. In development each browser *tab* remembers its
   own seat (sessionStorage instead of localStorage, and its own nickname), so tabs of one browser really are different players, and
@@ -302,6 +334,7 @@ Your identity always comes from the session the socket joined with, never from t
 | `host:removeAvatar` | `{ playerId }` | host only, any time |
 | `host:pause` / `host:resume` / `host:addTime` | `{}` | host only, any timed phase (+30 s, up to 15 min left) |
 | `host:skipToVoting` | `{}` | host only, day discussion |
+| `host:addBot` / `host:removeBot` / `host:fillBots` | `{}` | host only, lobby; returns `{ bots, players }` |
 | `game:ackRole` | `{}` | "I've seen my role" |
 | `game:nightAction` | `{ targetId, secondTargetId? }` | Mafia/Doctor/Detective/Bodyguard/Cupid |
 | `game:vote` | `{ targetId }` | a player id or `"skip"`; can change until the timer ends |
@@ -310,7 +343,7 @@ Your identity always comes from the session the socket joined with, never from t
 | `chat:react` | `{ reaction }` | `sus`, `agree`, `no_way` or `hmm`; routed exactly like `chat:send` |
 | `narrator:submit` | `{ requestId, text }` | host only: the AI's narration for a `narrator:request`, or `null` if it failed |
 | `time:sync` | `{ clientSentAt }` | returns `{ clientSentAt, serverNow }` |
-| `dev:fillBots` / `dev:debugState` | `{ count? }` / `{}` | development only (see above): add bots / the full server state |
+| `dev:debugState` | `{}` | development only (see above): the full server state |
 
 | Server → client | Payload |
 | --- | --- |
@@ -358,7 +391,7 @@ Render dashboard for the service.
 The server reads its port from `process.env.PORT` and listens on `0.0.0.0`. Behind Render's proxy it takes the client IP from
 `X-Forwarded-For` (`TRUST_PROXY_HOPS`, default 1 when `RENDER=true`). The client connects with Socket.IO to the same origin it was
 loaded from (no hard-coded host), starts with HTTP long-polling and upgrades to WebSocket, and reconnects by itself with
-back-off. Development tools (bots, debug panel) are off in production.
+back-off. Development tools (the debug panel) are off in production; bots are a normal feature.
 
 ### Free plan: read this before a game night
 

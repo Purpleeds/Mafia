@@ -118,8 +118,8 @@ function NightPlay({ received }: PhaseProps) {
       const voter = view.players.find((p) => p.id === voterId);
       if (!voter) continue;
       badges[targetId] = (
-        <span key={voterId} className="vote-badge" title={`${voter.name} picked this player`}>
-          <AvatarBadge avatar={voter.avatar} size={20} label={`${voter.name} picked this player`} />
+        <span key={voterId} className="vote-badge" title={`${nameOf(view, voter.id)} picked this player`}>
+          <AvatarBadge avatar={voter.avatar} size={20} label={`${nameOf(view, voter.id)} picked this player`} />
         </span>
       );
     }
@@ -210,6 +210,7 @@ function Whisper({ view, roomCode, real }: { view: NonNullable<PhaseProps["recei
           onSend={send}
           onReact={real ? react : null}
           avatarOf={avatarOf}
+          isBot={(id) => view.players.some((p) => p.id === id && p.isBot)}
           placeholder="Whisper…"
           emptyText="It's quiet…"
           label="Whisper"

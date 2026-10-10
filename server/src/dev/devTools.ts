@@ -1,22 +1,17 @@
 /**
- * Everything that only exists in development: the bots and the debug snapshot.
- * app.ts builds this only when dev tools are switched on (never in production)
- * and the socket layer only answers the dev events when it has one.
+ * Development only: the debug snapshot (the whole game state, secrets
+ * included). app.ts builds this only when dev tools are switched on (never in
+ * production) and the socket layer only answers the dev event when it has one.
+ * Bots are a real feature now (see ../bots); they don't live here.
  */
 import type { DevDebugSnapshot } from "@mafia/shared";
-import { cryptoRng, nextWake, type Rng } from "../game/index.js";
-import type { Logger } from "../logger.js";
+import { nextWake } from "../game/index.js";
 import type { RoomStore } from "../rooms/roomStore.js";
-import type { RoomService, ServiceResult } from "../rooms/roomService.js";
-import { BotManager, type BotOptions } from "./bots.js";
+import type { ServiceResult } from "../rooms/roomService.js";
 
 export interface DevToolsOptions {
-  service: RoomService;
   store: RoomStore;
-  logger: Logger;
   clock: () => number;
-  rng?: Rng;
-  bots?: Partial<BotOptions>;
 }
 
 /** Dev tools are on unless the server runs in production (NODE_ENV, or Render's RENDER=true). */
@@ -25,25 +20,12 @@ export function devToolsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 }
 
 export class DevTools {
-  readonly bots: BotManager;
   private readonly store: RoomStore;
   private readonly clock: () => number;
 
   constructor(options: DevToolsOptions) {
     this.store = options.store;
     this.clock = options.clock;
-    this.bots = new BotManager(options.service, options.store, options.logger, {
-      rng: options.rng ?? cryptoRng,
-      ...options.bots,
-    });
-  }
-
-  start(): void {
-    this.bots.start();
-  }
-
-  stop(): void {
-    this.bots.stop();
   }
 
   /** The room's whole state, secrets included. Any member of the room may look (it is a dev tool). */
@@ -58,7 +40,7 @@ export class DevTools {
       value: {
         serverNow: this.clock(),
         state,
-        botIds: this.bots.botIds(code),
+        botIds: state.players.filter((p) => p.isBot || p.botControlled).map((p) => p.id),
         timerAt: nextWake(state),
         chatMessages: room.chat.length,
         members: state.players.length + state.spectators.length,
@@ -66,4 +48,3 @@ export class DevTools {
     };
   }
 }
-

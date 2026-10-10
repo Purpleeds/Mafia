@@ -6,8 +6,11 @@ export interface PhaseProps {
   received: ReceivedState;
 }
 
+/** A member's name, with "(Bot)" after a bot's, so it reads right in any sentence or label. */
 export function nameOf(view: GameView, id: string): string {
-  return view.players.find((p) => p.id === id)?.name ?? view.spectators.find((s) => s.id === id)?.name ?? "Someone";
+  const player = view.players.find((p) => p.id === id);
+  if (player) return player.isBot ? `${player.name} (Bot)` : player.name;
+  return view.spectators.find((s) => s.id === id)?.name ?? "Someone";
 }
 
 /** You as a player in this game (not a spectator), if you are one. */
