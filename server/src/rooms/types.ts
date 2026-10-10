@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@mafia/shared";
+import type { BotPersonality } from "../bots/personality.js";
 import type { GameState } from "../game/index.js";
 
 /**
@@ -36,4 +37,11 @@ export interface Room {
    * (or a full one) takes a bot's place, if the host allows that.
    */
   botTarget: number | null;
+  /**
+   * bot id -> its personality (traits and speaking style), chosen when the host
+   * added it. Server-side only: never in anyone's view.
+   */
+  botProfiles: Record<string, BotPersonality>;
+  /** When the current game started (its role reveal), or null before the first. */
+  gameStartedAt: number | null;
 }

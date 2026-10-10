@@ -3,7 +3,7 @@
  * mirrors what the server tells us; game rules live on the server.
  */
 import { useSyncExternalStore } from "react";
-import type { ChatMessage, GameStatePayload, RemovedReason, SessionInfo } from "@mafia/shared";
+import type { ChatChannel, ChatMessage, GameStatePayload, RemovedReason, SessionInfo } from "@mafia/shared";
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting";
 
@@ -27,6 +27,12 @@ export interface Notice {
   reason?: RemovedReason | "expired" | "not_found";
 }
 
+/** A bot writing a message ("Mia is typing…"). */
+export interface Typing {
+  playerId: string;
+  channel: ChatChannel;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -45,6 +51,8 @@ export interface AppState {
   toasts: Toast[];
   /** Avatar pictures the server sent for this room: picture id -> data URL (always image/webp). */
   avatarImages: Record<string, string>;
+  /** Bots typing right now, in channels this player can read. */
+  typing: Typing[];
 }
 
 let state: AppState = {
@@ -58,6 +66,7 @@ let state: AppState = {
   replaced: null,
   toasts: [],
   avatarImages: {},
+  typing: [],
 };
 
 const listeners = new Set<() => void>();

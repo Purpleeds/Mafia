@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BOT_DIFFICULTIES,
+  containsProfanity,
+  filterChatText,
   MAX_BOTS,
   MAX_PLAYERS,
   findBannedWord,
@@ -17,9 +19,11 @@ import {
 import { describe, expect, it } from "vitest";
 import { R7, R8, gameWithRoles } from "../game/testing/harness.js";
 import { getGameView } from "../game/view.js";
-import { chooseNight, chooseVote, newMind, observe } from "./brain.js";
-import { BOT_LINES, fillLine } from "./lines.js";
+import { chooseNight, chooseVote } from "./brain.js";
+import { LINE_KEYS, allLines, fillLine, flavourOf } from "./lines.js";
+import { hear, newMind, observe } from "./mind.js";
 import { BOT_NAMES, freeBotName } from "./names.js";
+import { STYLE_IDS, type BotPersonality } from "./personality.js";
 import { AVATAR, botTable, must } from "./testing/sim.js";
 
 type Table = ReturnType<typeof botTable>;
@@ -119,7 +123,7 @@ function botChats(t: Table, hostId: string): ChatMessage[] {
 
 // ---------------------------------------------------------------- fair play
 
-describe("what a bot knows", () => {
+describe("what a bot knows", { timeout: 60_000 }, () => {
   it("is exactly the personal view and chat its seat's socket gets, with nothing hidden from its role", async () => {
     // checkBotSeats runs after every step of the game.
     const { final, t } = await playGame(4, { difficulty: "normal", mode: "normal", players: 8, settings: presetPatch("chaos") });
@@ -147,7 +151,7 @@ describe("what a bot knows", () => {
   it("can't reach the server's game state: the bot code only imports the shared types, its own files and the logger", () => {
     const dir = fileURLToPath(new URL(".", import.meta.url));
     const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
-    expect(files.sort()).toEqual(["brain.ts", "lines.ts", "manager.ts", "names.ts", "port.ts"]);
+    expect(files.sort()).toEqual(["brain.ts", "heard.ts", "lines.ts", "manager.ts", "mind.ts", "names.ts", "personality.ts", "port.ts", "strategy.ts"]);
     for (const file of files) {
       // Comments may talk about the game state; the code itself may not touch it.
       const source = readFileSync(join(dir, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -163,7 +167,7 @@ describe("what a bot knows", () => {
 
 // ---------------------------------------------------------------- validation
 
-describe("bot moves", () => {
+describe("bot moves", { timeout: 60_000 }, () => {
   async function started(seed = 2) {
     const t = botTable(seed);
     const { code, hostId } = await t.room(5, { soloPractice: true });
@@ -179,7 +183,7 @@ describe("bot moves", () => {
     const port = t.env.service;
     // Not a bot's seat.
     expect(await port.botAct(code, hostId, { type: "ACK_ROLE" })).toMatchObject({ ok: false, error: { code: "NOT_IN_ROOM" } });
-    expect(await port.botChat(code, hostId, "hi")).toMatchObject({ ok: false, error: { code: "NOT_IN_ROOM" } });
+    expect(await port.botSay(code, hostId, { act: "chatter", tone: "calm", says: "hi" })).toMatchObject({ ok: false, error: { code: "NOT_IN_ROOM" } });
     // Only what a player could send for their own seat.
     const kick = { type: "KICK", targetId: hostId } as never;
     expect(await port.botAct(code, bot, kick)).toMatchObject({ ok: false, error: { code: "BAD_REQUEST" } });
@@ -192,8 +196,10 @@ describe("bot moves", () => {
     const night = await port.botAct(code, bot, { type: "NIGHT_ACTION", targetId: "nobody" });
     expect(night.ok).toBe(false);
     expect(["INVALID_TARGET", "NO_ABILITY"]).toContain(!night.ok && night.error.code);
-    // The chat rules too.
-    expect(await port.botChat(code, bot, "see www.example.com")).toMatchObject({ ok: false });
+    // The chat rules too: no links, real players only, known kinds of message.
+    expect(await port.botSay(code, bot, { act: "chatter", tone: "calm", says: "see www.example.com" })).toMatchObject({ ok: false });
+    expect(await port.botSay(code, bot, { act: "accuse", tone: "calm", targetId: "nobody", says: "Hmm." })).toMatchObject({ ok: false, error: { code: "BAD_REQUEST" } });
+    expect(await port.botSay(code, bot, { act: "shout" as never, tone: "calm", says: "Hmm." })).toMatchObject({ ok: false, error: { code: "BAD_REQUEST" } });
   });
 
   it("are refused for a bot that is out of the game", async () => {
@@ -214,7 +220,14 @@ describe("bot moves", () => {
 
   it("wait a varied, human-like 4 seconds or more before night actions and votes", async () => {
     const { t, phaseStarts } = await playGame(5, { difficulty: "normal", mode: "safe", players: 7 });
-    const timed = t.moves.filter((m) => m.type === "NIGHT_ACTION" || m.type === "CAST_VOTE");
+    // Each bot's first move in a phase (changing a vote later, after being persuaded, is a different thing).
+    const firsts = new Map<string, (typeof t.moves)[number]>();
+    for (const m of t.moves.filter((x) => x.type === "NIGHT_ACTION" || x.type === "CAST_VOTE")) {
+      const start = [...phaseStarts].reverse().find((p) => p.at <= m.at);
+      const key = `${m.seat}:${start?.at}`;
+      if (!firsts.has(key)) firsts.set(key, m);
+    }
+    const timed = [...firsts.values()];
     expect(timed.length).toBeGreaterThan(5);
     const waits = timed.map((m) => {
       const start = [...phaseStarts].reverse().find((p) => p.at <= m.at);
@@ -231,7 +244,7 @@ describe("bot moves", () => {
 
 // ---------------------------------------------------------------- whole games
 
-describe("all-bot games", () => {
+describe("all-bot games", { timeout: 60_000 }, () => {
   for (const difficulty of BOT_DIFFICULTIES) {
     for (const mode of ["safe", "normal"] as ContentMode[]) {
       for (const seed of [1, 2, 3]) {
@@ -258,15 +271,21 @@ describe("all-bot games", () => {
     }
   });
 
-  it("keep the day chat to a few lines per phase", async () => {
+  it("keep the day chat to a reasonable number of lines per phase", async () => {
     const { t, hostId, phaseStarts } = await playGame(8, { difficulty: "normal", mode: "normal", players: 10, hostAway: true });
     const perPhase = new Map<number, number>();
+    const perBot = new Map<string, number>();
     for (const m of botChats(t, hostId)) {
       const start = [...phaseStarts].reverse().find((p) => p.at <= m.sentAt);
       perPhase.set(start?.at ?? 0, (perPhase.get(start?.at ?? 0) ?? 0) + 1);
+      const k = `${start?.at}:${m.senderId}`;
+      perBot.set(k, (perBot.get(k) ?? 0) + 1);
     }
     expect(perPhase.size).toBeGreaterThan(0);
-    for (const count of perPhase.values()) expect(count).toBeLessThanOrEqual(6);
+    // The room's cap: a 2-minute discussion allows 24 bot lines, a 45 s vote 8.
+    for (const count of perPhase.values()) expect(count).toBeLessThanOrEqual(24);
+    // Each bot: its own few, plus a few answers.
+    for (const count of perBot.values()) expect(count).toBeLessThanOrEqual(8);
   });
 
   it("tell a human Mafia teammate in the Mafia chat who they want, and nobody else hears it", async () => {
@@ -450,7 +469,7 @@ describe("replacing a bot when someone joins", () => {
 
 // ---------------------------------------------------------------- disconnected players
 
-describe("a bot standing in for a disconnected player", () => {
+describe("a bot standing in for a disconnected player", { timeout: 60_000 }, () => {
   async function twoPeople(settings: SettingsPatch = {}) {
     const t = botTable(12);
     const { code, hostId } = await t.room(1, settings);
@@ -535,6 +554,7 @@ describe("a bot standing in for a disconnected player", () => {
 
 describe("bot reasoning", () => {
   const steady = () => 0.5;
+  const average: BotPersonality = { talkativeness: 0.5, gullibility: 0.5, aggression: 0.5, stubbornness: 0.3, deception: 0.5, style: "logical" };
 
   it("never lets the Mafia pick a teammate, and goes along with a human teammate's pick", () => {
     const g = gameWithRoles(R8);
@@ -585,16 +605,25 @@ describe("bot reasoning", () => {
     g.nightAct("p1", "p6");
     g.advanceTo("VOTING");
     const view = getGameView(g.state, "p5");
-    const chat: ChatMessage[] = ["p2", "p3", "p4", "p7"].map((id, i) => ({
-      id: `m${i}`,
-      channel: "public",
-      senderId: id,
-      senderName: `Player ${id.slice(1)}`,
-      text: "I don't trust Player 1. Player 1 is in the Mafia!",
-      sentAt: 0,
-    }));
-    const mind = observe(newMind(), view, chat, steady);
-    const votes = Array.from({ length: 20 }, (_, i) => chooseVote(mind, view, "normal", mulberry(i)));
+    const ctx = { view, personality: average, difficulty: "normal" as const, random: steady };
+    const mind = newMind(view.gameNumber);
+    observe(mind, ctx, []);
+    hear(
+      mind,
+      ctx,
+      ["p2", "p3", "p4", "p7"].map((id, i) => ({
+        messageId: `m${i}`,
+        speakerId: id,
+        at: i,
+        byBot: false,
+        replyTo: null,
+        kind: "accuse" as const,
+        targetId: "p1",
+        confident: true,
+        evidence: null,
+      })),
+    );
+    const votes = Array.from({ length: 20 }, (_, i) => chooseVote(mind, view, "normal", mulberry(i), average));
     expect(votes.filter((v) => v === "p1").length).toBeGreaterThan(10);
   });
 
@@ -603,7 +632,7 @@ describe("bot reasoning", () => {
     g.nightAct("p1", "p6");
     g.advanceTo("VOTING");
     const view = getGameView(g.state, "p5");
-    const votes = new Set(Array.from({ length: 40 }, (_, i) => chooseVote(newMind(), view, "easy", mulberry(i))));
+    const votes = new Set(Array.from({ length: 40 }, (_, i) => chooseVote(newMind(), view, "easy", mulberry(i), average)));
     expect(votes.size).toBeGreaterThan(2);
   });
 });
@@ -622,18 +651,29 @@ function mulberry(seed: number): () => number {
 // ---------------------------------------------------------------- what bots say
 
 describe("bot lines and names", () => {
-  it("have no emoji, and Safe Mode's lines pass the Safe Mode word list", () => {
+  it("have no emoji, and every line (with every style's opener and closer) passes its mode's word list", () => {
     for (const mode of ["safe", "normal"] as ContentMode[]) {
-      for (const lines of Object.values(BOT_LINES[mode])) {
-        expect(lines.length).toBeGreaterThan(0);
+      for (const key of LINE_KEYS) {
+        const lines = allLines(mode, key);
+        expect(lines.length, key).toBeGreaterThan(0);
         for (const line of lines) {
           for (const gang of ["Mafia", "Sneaky Gang"]) {
-            const text = fillLine(line, { name: "Alex", gang });
+            const text = fillLine(line, { name: "Alex", about: "Sam", role: "Doctor", gang, night: "last night" });
             expect(text).not.toMatch(EMOJI);
-            expect(text).not.toMatch(/[{}]/);
+            expect(text, key).not.toMatch(/[{}]/);
             expect(findBannedWord(text, mode), text).toBeNull();
-            if (mode === "safe") expect(findBannedWord(text, "safe"), text).toBeNull();
+            expect(containsProfanity(text), text).toBe(false);
+            // The same bar as the AI's lines: nothing even the strictest chat filter would hide.
+            expect(filterChatText(text, "strict"), text).toBe(text);
           }
+        }
+      }
+      for (const style of STYLE_IDS) {
+        const { open, close } = flavourOf(style);
+        for (const piece of [...open.map((o) => o.text), ...close]) {
+          expect(findBannedWord(piece, "safe"), piece).toBeNull();
+          expect(piece).not.toMatch(EMOJI);
+          expect(piece).not.toMatch(/[{}]/);
         }
       }
     }

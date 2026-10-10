@@ -1,4 +1,5 @@
 import { AVATAR_POLICIES, BOT_DIFFICULTIES, CHAT_FILTERS, defaultSettings, modeDefaults } from "@mafia/shared";
+import { cleanPersonality } from "../bots/personality.js";
 import type { Room } from "./types.js";
 
 function isOneOf<T extends string>(list: readonly T[], value: unknown): value is T {
@@ -24,10 +25,16 @@ export function upgradeRoom(room: Room): void {
   if (!isOneOf(AVATAR_POLICIES, settings.customAvatars)) settings.customAvatars = defaults.customAvatars;
   const base = defaultSettings();
   if (!isOneOf(BOT_DIFFICULTIES, settings.botDifficulty)) settings.botDifficulty = base.botDifficulty;
-  for (const key of ["soloPractice", "replaceBots", "botTakeover"] as const) {
+  for (const key of ["soloPractice", "replaceBots", "botTakeover", "aiBotChat"] as const) {
     if (typeof settings[key] !== "boolean") settings[key] = base[key];
   }
   if (room.botTarget === undefined) room.botTarget = null;
+  if (room.gameStartedAt === undefined) room.gameStartedAt = null;
+  const profiles = (room.botProfiles ?? {}) as Record<string, unknown>;
+  room.botProfiles = {};
+  for (const p of room.state.players) {
+    if (p.isBot) room.botProfiles[p.id] = cleanPersonality(profiles[p.id], p.id);
+  }
 
   if (typeof state.gameNumber !== "number") state.gameNumber = state.phase === "LOBBY" ? 0 : 1;
   if (state.paused === undefined) state.paused = null;

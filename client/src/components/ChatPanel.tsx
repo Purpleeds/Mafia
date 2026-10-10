@@ -18,6 +18,11 @@ export function ChatPanel({ view, roomCode }: { view: GameView; roomCode: string
   const canWrite = you?.chat.write.includes(active) ?? false;
 
   const messages = useMemo(() => all.filter((m) => m.channel === active), [all, active]);
+  const typing = useAppState((s) => s.typing);
+  const typingNames = typing
+    .filter((t) => t.channel === active)
+    .map((t) => view.players.find((p) => p.id === t.playerId)?.name)
+    .filter((n): n is string => !!n);
   const avatarOf = (id: string) =>
     view.players.find((p) => p.id === id)?.avatar ?? view.spectators.find((s) => s.id === id)?.avatar ?? null;
 
@@ -63,6 +68,7 @@ export function ChatPanel({ view, roomCode }: { view: GameView; roomCode: string
         onReact={canWrite ? react : null}
         avatarOf={avatarOf}
         isBot={(id) => view.players.some((p) => p.id === id && p.isBot)}
+        typingNames={typingNames}
         placeholder={active === "graveyard" ? words.outChatPlaceholder : "Message the town"}
         readOnlyNote={
           active === "public" && you && !you.alive

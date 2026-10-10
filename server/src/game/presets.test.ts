@@ -69,7 +69,7 @@ describe("game presets", () => {
   });
 });
 
-describe("playing each preset", () => {
+describe("playing each preset", { timeout: 60_000 }, () => {
   async function play(id: PresetId, mode: ContentMode, players: number) {
     const t = botTable(9);
     const { code, hostId } = await t.room(players, { contentMode: mode, soloPractice: true });

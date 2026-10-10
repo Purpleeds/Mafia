@@ -11,6 +11,13 @@
 import type { ChatChannel, GameErrorCode, GameView, SettingsPatch } from "./game.js";
 import type { Avatar } from "./identity.js";
 import type { NarrationFacts } from "./narration.js";
+import type {
+  BotListenRequestPayload,
+  BotListenSubmitPayload,
+  BotSpeechRequestPayload,
+  BotSpeechSubmitPayload,
+  ChatTypingPayload,
+} from "./talk.js";
 
 // ---------------------------------------------------------------- limits
 
@@ -367,6 +374,10 @@ export interface ClientToServerEvents {
   "chat:send": (payload: ChatSendPayload, ack: Ack) => void;
   "chat:react": (payload: ChatReactPayload, ack: Ack) => void;
   "narrator:submit": (payload: NarratorSubmitPayload, ack: Ack) => void;
+  /** Host only: the bot messages its AI wrote for a bots:speechRequest (or null). */
+  "bots:speechSubmit": (payload: BotSpeechSubmitPayload, ack: Ack) => void;
+  /** Host only: what its AI read in the chat for a bots:listenRequest (or null). */
+  "bots:listenSubmit": (payload: BotListenSubmitPayload, ack: Ack) => void;
   "time:sync": (payload: TimeSyncPayload, ack: Ack<TimeSyncResult>) => void;
   /** Dev tools only. */
   "dev:debugState": (payload: Record<string, never>, ack: Ack<DevDebugSnapshot>) => void;
@@ -385,6 +396,12 @@ export interface ServerToClientEvents {
   "session:replaced": (payload: SessionReplacedPayload) => void;
   /** Host only: write the narration for these public facts (see NarratorRequestPayload). */
   "narrator:request": (payload: NarratorRequestPayload) => void;
+  /** Host only: write these bots' messages (public intents only; see talk.ts). */
+  "bots:speechRequest": (payload: BotSpeechRequestPayload) => void;
+  /** Host only: report what these public messages say. */
+  "bots:listenRequest": (payload: BotListenRequestPayload) => void;
+  /** A bot is (or stopped) typing in a channel you can read. */
+  "chat:typing": (payload: ChatTypingPayload) => void;
   /** Errors for events sent without an ack. */
   "server:error": (payload: ErrorPayload) => void;
 }
@@ -424,6 +441,8 @@ export const CLIENT_EVENTS = [
   "chat:send",
   "chat:react",
   "narrator:submit",
+  "bots:speechSubmit",
+  "bots:listenSubmit",
   "time:sync",
 ] as const satisfies readonly ClientEventName[];
 

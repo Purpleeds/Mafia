@@ -113,8 +113,18 @@ export interface GameSettings {
    * AI. Falls back to ready-made lines whenever that doesn't work out.
    */
   aiNarrator: boolean;
-  /** How bots play: "easy" picks mostly at random, "normal" reasons from what it has seen. */
+  /**
+   * How bots play: "easy" picks mostly at random and misses most lies, "normal"
+   * reasons from what it has seen and catches most lies, "hard" catches every
+   * lie it can see and lies very consistently.
+   */
   botDifficulty: BotDifficulty;
+  /**
+   * The host's browser (Puter's AI) writes the bots' messages in their own
+   * styles and reads the public day chat for them. It is only ever sent public
+   * information. Off: ready-made lines and a keyword reader.
+   */
+  aiBotChat: boolean;
   /** Allow a game with a single real player and bots (practice). Off: at least 2 real players. */
   soloPractice: boolean;
   /** When a real player joins a lobby that is full or at the size the host filled it to, a bot makes room. */
@@ -123,7 +133,7 @@ export interface GameSettings {
   botTakeover: boolean;
 }
 
-export const BOT_DIFFICULTIES = ["easy", "normal"] as const;
+export const BOT_DIFFICULTIES = ["easy", "normal", "hard"] as const;
 export type BotDifficulty = (typeof BOT_DIFFICULTIES)[number];
 
 export interface SettingsPatch {
@@ -140,6 +150,7 @@ export interface SettingsPatch {
   sneakyGang?: boolean;
   aiNarrator?: boolean;
   botDifficulty?: BotDifficulty;
+  aiBotChat?: boolean;
   soloPractice?: boolean;
   replaceBots?: boolean;
   botTakeover?: boolean;
@@ -202,6 +213,7 @@ export function defaultSettings(): GameSettings {
     sneakyGang: false,
     aiNarrator: false,
     botDifficulty: "normal",
+    aiBotChat: false,
     soloPractice: false,
     replaceBots: true,
     botTakeover: true,

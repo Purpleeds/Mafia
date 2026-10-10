@@ -174,6 +174,7 @@ function NightPlay({ received }: PhaseProps) {
 function Whisper({ view, roomCode, real }: { view: NonNullable<PhaseProps["received"]["payload"]["view"]>; roomCode: string; real: boolean }) {
   const [open, setOpen] = useState(false);
   const all = useAppState((s) => s.chat);
+  const typing = useAppState((s) => s.typing);
   const [local, setLocal] = useState<{ id: string; senderId: string; senderName: string; text: string }[]>([]);
   const you = view.you;
   const messages = real
@@ -211,6 +212,14 @@ function Whisper({ view, roomCode, real }: { view: NonNullable<PhaseProps["recei
           onReact={real ? react : null}
           avatarOf={avatarOf}
           isBot={(id) => view.players.some((p) => p.id === id && p.isBot)}
+          typingNames={
+            real
+              ? typing
+                  .filter((t) => t.channel === "mafia")
+                  .map((t) => view.players.find((p) => p.id === t.playerId)?.name)
+                  .filter((n): n is string => !!n)
+              : []
+          }
           placeholder="Whisper…"
           emptyText="It's quiet…"
           label="Whisper"

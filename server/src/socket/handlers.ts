@@ -26,6 +26,8 @@ import {
   parseEmpty,
   parseJoinRoom,
   parseNarratorSubmit,
+  parseBotListenSubmit,
+  parseBotSpeechSubmit,
   parseNightAction,
   parsePeekRoom,
   parseResume,
@@ -435,6 +437,12 @@ export function attachSocketHandlers(io: MafiaServer, options: SocketHandlerOpti
 
     on("narrator:submit", { category: "gameAction", parse: parseNarratorSubmit }, (p) =>
       withSession((s) => service.submitNarration(s.roomCode, s.playerId, p.requestId, p.text)),
+    );
+    on("bots:speechSubmit", { category: "gameAction", parse: parseBotSpeechSubmit }, (p) =>
+      withSession((s) => service.submitBotSpeech(s.roomCode, s.playerId, p.requestId, p.messages)),
+    );
+    on("bots:listenSubmit", { category: "gameAction", parse: parseBotListenSubmit }, (p) =>
+      withSession((s) => service.submitBotListen(s.roomCode, s.playerId, p.requestId, p.events)),
     );
 
     on("host:addBot", { category: "hostAction", parse: parseEmpty }, () =>

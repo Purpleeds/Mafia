@@ -8,18 +8,94 @@ import {
   type GameView,
   type SettingsPatch,
 } from "@mafia/shared";
+import { useEffect } from "react";
 import { Icon } from "../art/icons";
 import { useAction } from "../lib/useAction";
+import { preparePuter, signInFromClick, useNarratorStatus } from "../narrator/status";
 import { call } from "../net/socket";
 import { ErrorText } from "./ErrorText";
 
 export const BOT_DIFFICULTY_INFO: Record<BotDifficulty, { label: string; description: string }> = {
-  easy: { label: "Easy", description: "Bots mostly pick at random. Good for learning the game." },
+  easy: { label: "Easy", description: "Bots mostly pick at random and miss most lies. Good for learning the game." },
   normal: {
     label: "Normal",
-    description: "Bots read the votes and the chat, team up when they're in the Mafia, and push their suspicions.",
+    description: "Bots read the votes and the chat, catch most lies, team up when they're in the Mafia, and bluff now and then.",
+  },
+  hard: {
+    label: "Hard",
+    description: "Bots catch every contradiction they can see, and as the Mafia they lie carefully and consistently.",
   },
 };
+
+/**
+ * "Smarter bot chat": the host's browser (Puter's AI) writes the bots'
+ * messages and reads the public day chat for them. Like the AI narrator, it
+ * needs the host signed in to Puter, and the AI is only ever sent public
+ * information: never anyone's role.
+ */
+function BotAiSetting({ enabled }: { enabled: boolean }) {
+  const status = useNarratorStatus();
+  const action = useAction();
+
+  useEffect(() => {
+    void preparePuter();
+  }, []);
+
+  const loading = status.phase === "idle" || status.phase === "loading";
+  const failedToLoad = status.phase === "failed";
+  const busy = action.pending || status.phase === "signing_in";
+  const setEnabled = (on: boolean) => void action.run(() => call("host:updateSettings", { aiBotChat: on }));
+  // The sign-in popup must open inside the click, before any await.
+  const turnOn = () => {
+    void signInFromClick().then((ok) => {
+      if (ok) setEnabled(true);
+    });
+  };
+
+  let note: string;
+  if (failedToLoad) note = "Couldn't reach Puter. Bots use their ready-made lines.";
+  else if (loading) note = "Getting Puter ready…";
+  else if (status.phase === "signing_in") note = "Finish signing in to Puter in the window that opened…";
+  else if (enabled && status.signedIn) note = "On: the AI writes what bots say and reads the chat for them. Ready-made lines are the backup.";
+  else if (enabled) note = "On, but this device isn't signed in to Puter, so bots use ready-made lines.";
+  else note = "Off: bots use ready-made lines and understand common phrases.";
+
+  return (
+    <div className="narrator-setting">
+      <label htmlFor="setting-ai-bots" className="switch-row">
+        <span className="switch-text">
+          <span className="switch-label">
+            <Icon name="sparkle" size={20} />
+            Smarter bot chat (AI)
+          </span>
+          <span className="field-hint">
+            Your AI (Puter) rewrites each bot's message in its own style and reads the public day chat so bots
+            understand you. It is only ever sent what everyone can see: never anyone's role.
+          </span>
+        </span>
+        <input
+          id="setting-ai-bots"
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={enabled}
+          disabled={loading || failedToLoad || busy}
+          aria-describedby="ai-bots-status"
+          onChange={(e) => (e.target.checked ? turnOn() : setEnabled(false))}
+        />
+      </label>
+      <p id="ai-bots-status" className="field-hint" role="status">
+        {note}
+      </p>
+      {enabled && !status.signedIn && !loading && !failedToLoad && status.phase !== "signing_in" ? (
+        <button type="button" className="btn btn-small" onClick={() => void signInFromClick()}>
+          Sign in to Puter
+        </button>
+      ) : null}
+      <ErrorText error={action.error} />
+    </div>
+  );
+}
 
 /**
  * Host only, in the lobby: add or remove bots when there aren't enough
@@ -102,6 +178,8 @@ export function BotsCard({ view }: { view: GameView }) {
           </p>
         </fieldset>
 
+        <BotAiSetting enabled={settings.aiBotChat} />
+
         <label htmlFor="setting-solo" className="switch-row">
           <span className="switch-text">
             <span>Solo practice</span>
@@ -166,6 +244,7 @@ export function botSettingsSummary(s: GameSettings, bots: number): string {
     bots === 0 ? "None yet" : `${bots} (${BOT_DIFFICULTY_INFO[s.botDifficulty].label})`,
     s.replaceBots ? "a bot makes space when someone joins" : "bots stay when someone joins",
     s.botTakeover ? "a bot plays for anyone who disconnects" : "no stand-ins for disconnected players",
+    s.aiBotChat ? "AI writes bot messages" : "ready-made bot lines",
   ];
   if (s.soloPractice) parts.push("solo practice allowed");
   return parts.join(" · ");

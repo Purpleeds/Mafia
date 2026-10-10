@@ -1,5 +1,8 @@
 import type {
   AvatarImagesPayload,
+  BotListenRequestPayload,
+  BotSpeechRequestPayload,
+  ChatTypingPayload,
   ChatHistoryPayload,
   ChatMessage,
   GameStatePayload,
@@ -34,6 +37,19 @@ export class SocketBroadcaster implements Broadcaster {
   /** Pictures go only to members of the room, through their private Socket.IO room. */
   avatarImages(roomCode: string, playerId: string, payload: AvatarImagesPayload): void {
     this.io.to(playerRoom(roomCode, playerId)).emit("avatar:images", payload);
+  }
+
+  /** Only the host's private room gets these; nobody else is ever sent them. */
+  botSpeechRequest(roomCode: string, playerId: string, payload: BotSpeechRequestPayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("bots:speechRequest", payload);
+  }
+
+  botListenRequest(roomCode: string, playerId: string, payload: BotListenRequestPayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("bots:listenRequest", payload);
+  }
+
+  typing(roomCode: string, playerId: string, payload: ChatTypingPayload): void {
+    this.io.to(playerRoom(roomCode, playerId)).emit("chat:typing", payload);
   }
 
   notice(roomCode: string, playerId: string, payload: RoomNoticePayload): void {

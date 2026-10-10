@@ -124,6 +124,7 @@ export function saveHostSettings(settings: GameSettings): void {
     sneakyGang: settings.sneakyGang,
     aiNarrator: settings.aiNarrator,
     botDifficulty: settings.botDifficulty,
+    aiBotChat: settings.aiBotChat,
     soloPractice: settings.soloPractice,
     replaceBots: settings.replaceBots,
     botTakeover: settings.botTakeover,

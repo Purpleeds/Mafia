@@ -16,12 +16,16 @@ import { noticeText } from "../lib/notices";
 import { markDeclined, maybeUploadSavedPhoto, resetPhotoUpload } from "../lib/photo";
 import { friendlyError } from "../lib/errors";
 import { handleNarratorRequest } from "../narrator/host";
+import { handleBotListenRequest, handleBotSpeechRequest } from "../narrator/botTalk";
 import { goHome, goToRoom, parseRoute } from "../lib/router";
 import { forgetSession, loadHostSettings, loadSession, saveHostSettings, saveProfile, saveSession } from "../lib/storage";
 import { call, socket, type CallResult } from "../net/socket";
 import { getState, setState, showToast } from "./store";
 
 const MAX_CHAT_MESSAGES = 200;
+/** A "typing…" that never finished disappears after this long. */
+const TYPING_TIMEOUT_MS = 20_000;
+const typingTimers = new Map<string, number>();
 
 /** The highest game:state version accepted on the current socket and session. */
 let heldVersion = 0;
@@ -38,7 +42,7 @@ let initialized = false;
 function clearRoomData(): void {
   heldVersion = 0;
   resetPhotoUpload();
-  setState({ game: null, chat: [], avatarImages: {} });
+  setState({ game: null, chat: [], avatarImages: {}, typing: [] });
 }
 
 /** Makes `info` the active session (after create, join or resume). */
@@ -327,7 +331,23 @@ export function initConnection(): void {
     if (!getState().session) return;
     const chat = getState().chat;
     if (chat.some((m) => m.id === message.id)) return;
-    setState({ chat: [...chat.slice(-(MAX_CHAT_MESSAGES - 1)), message] });
+    // Their message is here, so they've stopped typing.
+    const typing = getState().typing.filter((t) => t.playerId !== message.senderId);
+    setState({ chat: [...chat.slice(-(MAX_CHAT_MESSAGES - 1)), message], typing });
+  });
+
+  socket.on("chat:typing", (payload) => {
+    if (!getState().session) return;
+    const others = getState().typing.filter((t) => t.playerId !== payload.playerId);
+    setState({ typing: payload.typing ? [...others, { playerId: payload.playerId, channel: payload.channel }] : others });
+    window.clearTimeout(typingTimers.get(payload.playerId));
+    if (payload.typing) {
+      // Never stuck on "typing…" if the "done" never arrives.
+      typingTimers.set(
+        payload.playerId,
+        window.setTimeout(() => setState({ typing: getState().typing.filter((t) => t.playerId !== payload.playerId) }), TYPING_TIMEOUT_MS),
+      );
+    }
   });
 
   socket.on("chat:history", (payload) => {
@@ -342,6 +362,13 @@ export function initConnection(): void {
   // Only the host's browser is ever asked: write the narration with Puter's AI and send it back.
   socket.on("narrator:request", (request) => {
     void handleNarratorRequest(request).catch(() => undefined);
+  });
+  // The same for the bots: write their messages, and read the public chat for them (public information only).
+  socket.on("bots:speechRequest", (request) => {
+    void handleBotSpeechRequest(request).catch(() => undefined);
+  });
+  socket.on("bots:listenRequest", (request) => {
+    void handleBotListenRequest(request).catch(() => undefined);
   });
 
   socket.on("session:replaced", (payload) => {

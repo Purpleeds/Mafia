@@ -231,3 +231,13 @@ details.card > summary .field-hint { font-weight: 500; margin: 0; }
 .bots-card .bots-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .bots-card .bots-actions .btn { flex: 1 1 auto; }
 .bots-count { font-variant-numeric: tabular-nums; }
+
+/* "Mia is typing…" under the chat */
+.chat-typing {
+  margin: 4px 2px 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+/* A dimmed (out of the game) card still needs a readable "Bot" label. */
+.is-out .bot-tag { color: var(--text); }

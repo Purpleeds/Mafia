@@ -4,6 +4,8 @@ import {
   isAvatar,
   normalizeRoomCode,
   type Avatar,
+  type BotListenSubmitPayload,
+  type BotSpeechSubmitPayload,
   CHAT_REACTIONS,
   type ChatReactPayload,
   type ChatReaction,
@@ -225,6 +227,45 @@ export function parseNarratorSubmit(raw: unknown): Parsed<NarratorSubmitPayload>
   const text = stringField(raw, "text", MAX_NARRATION_INPUT);
   if (text === null) return bad("text must be a string or null.");
   return ok({ requestId, text });
+}
+
+const REQUEST_ID = /^[a-z0-9]{3,64}$/;
+const MAX_BOT_LINE_INPUT = 600;
+const MAX_LISTEN_JSON = 16_000;
+
+/** Bot messages the host's AI wrote: only bounded here; the server checks each one against its intent. */
+export function parseBotSpeechSubmit(raw: unknown): Parsed<BotSpeechSubmitPayload> {
+  if (!isRecord(raw)) return bad("Expected { requestId, messages }.");
+  const requestId = raw.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return bad("Invalid requestId.");
+  if (raw.messages === null) return ok({ requestId, messages: null });
+  if (!Array.isArray(raw.messages) || raw.messages.length > 10) return bad("messages must be a short list or null.");
+  const messages: Array<{ id: string; text: string }> = [];
+  for (const m of raw.messages) {
+    if (!isRecord(m)) return bad("Each message must be { id, text }.");
+    const id = stringField(m, "id", 16);
+    const text = typeof m.text === "string" ? m.text.slice(0, MAX_BOT_LINE_INPUT) : null;
+    if (id === null || text === null) return bad("Each message must be { id, text }.");
+    messages.push({ id, text });
+  }
+  return ok({ requestId, messages });
+}
+
+/** What the host's AI read in the chat: only its size is bounded here; the server validates every event. */
+export function parseBotListenSubmit(raw: unknown): Parsed<BotListenSubmitPayload> {
+  if (!isRecord(raw)) return bad("Expected { requestId, events }.");
+  const requestId = raw.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return bad("Invalid requestId.");
+  if (raw.events === null) return ok({ requestId, events: null });
+  if (!Array.isArray(raw.events) || raw.events.length > 60) return bad("events must be a list or null.");
+  let size: number;
+  try {
+    size = JSON.stringify(raw.events).length;
+  } catch {
+    return bad("events must be plain data.");
+  }
+  if (size > MAX_LISTEN_JSON) return bad("events is too large.");
+  return ok({ requestId, events: raw.events as unknown[] });
 }
 
 export function parseChat(raw: unknown): Parsed<ChatSendPayload> {

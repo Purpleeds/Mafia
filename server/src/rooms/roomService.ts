@@ -16,6 +16,9 @@ import {
   validateRoomPassword,
   type Avatar,
   type AvatarImagesPayload,
+  type BotListenRequestPayload,
+  type BotSpeechRequestPayload,
+  type ChatTypingPayload,
   CHAT_REACTIONS,
   MAX_CHAT_LENGTH,
   type ChatReaction,
@@ -52,7 +55,9 @@ import {
 import type { Logger } from "../logger.js";
 import { narrationFacts } from "../narration/facts.js";
 import { freeBotName, randomBotAvatar } from "../bots/names.js";
-import type { BotAction, BotPort, BotResult, BotSink } from "../bots/port.js";
+import { randomPersonality, standInPersonality } from "../bots/personality.js";
+import type { BotAction, BotIntent, BotPort, BotResult, BotSink } from "../bots/port.js";
+import { BotTalk } from "./botTalk.js";
 import { AvatarStore, newAvatarId } from "./avatars.js";
 import { MAX_CHAT_HISTORY, canSeeInHistory, sanitizeChatText } from "./chatRules.js";
 import { digest, generateRoomCode, hashToken, newPlayerId, newSessionToken } from "./ids.js";
@@ -76,6 +81,12 @@ export interface Broadcaster {
   avatarImages(roomCode: string, playerId: string, payload: AvatarImagesPayload): void;
   /** A short message about someone in the room (joined, left, disconnected...). */
   notice(roomCode: string, playerId: string, payload: RoomNoticePayload): void;
+  /** Ask the host's browser to write bot messages (public intents only). Only ever sent to the host. */
+  botSpeechRequest(roomCode: string, playerId: string, payload: BotSpeechRequestPayload): void;
+  /** Ask the host's browser what some public messages say. Only ever sent to the host. */
+  botListenRequest(roomCode: string, playerId: string, payload: BotListenRequestPayload): void;
+  /** "Mia is typing…", to everyone who can read the channel the bot is writing in. */
+  typing(roomCode: string, playerId: string, payload: ChatTypingPayload): void;
 }
 
 export type ServiceResult<T> = { ok: true; value: T } | { ok: false; error: ErrorPayload };
@@ -168,6 +179,16 @@ const REMOVED_MESSAGES: Record<RemovedReason, string> = {
 /** Game-rule rejections that would hint at someone's role if logged next to their id. */
 const QUIET_REJECTIONS = new Set<ErrorCode>(["NO_ABILITY", "INVALID_TARGET", "REPEAT_PROTECTION", "DEAD_PLAYER"]);
 
+/** Typed text as it will be posted: clean, no links, filtered for the room. */
+function typedText(state: GameState, rawText: string): ServiceResult<{ text: string }> {
+  const cleaned = sanitizeChatText(rawText);
+  if (cleaned === null) return fail("BAD_REQUEST", `Messages must be 1–${MAX_CHAT_LENGTH} characters.`);
+  // Links are blocked at every filter level, uncensored included (spam and scam sites).
+  if (containsLink(cleaned)) return fail("CHAT_LINK", "Links can't be shared in chat.");
+  // Safe Mode is always strict; in Normal Mode the host picks strict, standard or uncensored.
+  return ok({ text: filterChatText(cleaned, effectiveChatFilter(state.settings)) });
+}
+
 function memberIds(state: GameState): string[] {
   return [...state.players.map((p) => p.id), ...state.spectators.map((p) => p.id)];
 }
@@ -207,6 +228,8 @@ export class RoomService implements BotPort {
   readonly avatars = new AvatarStore();
   /** Where bot seats get their deliveries (the bot manager). Null: bots sit still. */
   private botSink: BotSink | null = null;
+  /** Bots' messages: the queue, "typing…", and the host's AI (public information only). */
+  private readonly talk: BotTalk;
 
   /** Connects the bots: from now on every bot seat gets exactly what its socket would get. */
   attachBots(sink: BotSink | null): void {
@@ -228,6 +251,33 @@ export class RoomService implements BotPort {
     this.idleLobbyTtlMs = options.idleLobbyTtlMs ?? 30 * 60_000;
     this.lobbyDropMs = options.lobbyDropMs ?? 2 * 60_000;
     this.recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
+    this.talk = new BotTalk({
+      clock: () => this.clock(),
+      random: () => this.rng(),
+      scheduler: this.scheduler,
+      logger: this.logger,
+      withRoom: async (code, task) => {
+        await this.withRoom(code, async (room) => {
+          await task(room);
+          return ok(null);
+        });
+      },
+      post: (room, botId, text) => this.postBotLine(room, botId, text),
+      heard: (room, events) => this.botSink?.heard(room.code, events),
+      typing: (room, botId, channel, typing) => {
+        for (const id of memberIds(room.state)) {
+          if (canRead(room.state, id, channel)) this.broadcaster.typing(room.code, id, { playerId: botId, channel, typing });
+        }
+      },
+      speechRequest: (room, hostId, payload) => {
+        this.broadcaster.botSpeechRequest(room.code, hostId, payload);
+        this.logger.info("bots.ai_speech_requested", { room: room.code, lines: payload.intents.length });
+      },
+      listenRequest: (room, hostId, payload) => {
+        this.broadcaster.botListenRequest(room.code, hostId, payload);
+        this.logger.info("bots.ai_listen_requested", { room: room.code, messages: payload.messages.length });
+      },
+    });
   }
 
   // ------------------------------------------------------------ joining
@@ -282,6 +332,8 @@ export class RoomService implements BotPort {
       reconnecting: {},
       delivery: {},
       botTarget: null,
+      botProfiles: {},
+      gameStartedAt: null,
     });
     const created = (code: string): ServiceResult<SessionInfo> => {
       if (owner !== null) this.indexOwner(owner, code);
@@ -615,13 +667,24 @@ export class RoomService implements BotPort {
 
   private applyAddBot(room: Room, hostId: string): ServiceResult<GameState> {
     const names = [...room.state.players, ...room.state.spectators].map((m) => m.name);
-    return this.apply(room, {
+    const botId = newPlayerId();
+    const added = this.apply(room, {
       type: "ADD_BOT",
       playerId: hostId,
-      botId: newPlayerId(),
+      botId,
       name: freeBotName(names, this.rng),
       avatar: randomBotAvatar(this.rng),
     });
+    // Its own personality, with a speaking style the room's other bots don't have yet.
+    if (added.ok) room.botProfiles[botId] = randomPersonality(this.rng, Object.values(room.botProfiles).map((p) => p.style));
+    return added;
+  }
+
+  /** Tells the bots a seat is theirs, and how that bot thinks (a stand-in listens but never speaks). */
+  private attachBot(room: Room, id: string): void {
+    const player = room.state.players.find((p) => p.id === id);
+    if (!player) return;
+    this.botSink?.attach(room.code, id, player.isBot ? (room.botProfiles[id] ?? standInPersonality()) : standInPersonality());
   }
 
   private logBots(room: Room, event: string, changed: number): BotCountResult {
@@ -679,8 +742,12 @@ export class RoomService implements BotPort {
     });
   }
 
-  botChat(code: string, seatId: string, text: string): Promise<BotResult> {
-    return this.sendChat(code, seatId, text, { bot: true });
+  /** A bot wants to say something: queued, shown as "typing…", then posted through the normal chat rules. */
+  botSay(code: string, seatId: string, intent: BotIntent): Promise<BotResult> {
+    return this.withRoom(code, async (room) => {
+      const queued = this.talk.enqueue(room, seatId, intent);
+      return queued.ok ? ok(null) : fail(queued.code, queued.message);
+    });
   }
 
   botReact(code: string, seatId: string, reaction: ChatReaction): Promise<BotResult> {
@@ -712,14 +779,7 @@ export class RoomService implements BotPort {
 
   /** A typed message. The server picks the channel from who the sender is. */
   sendChat(code: string, memberId: string, rawText: string, opts: { bot?: boolean } = {}): Promise<ServiceResult<null>> {
-    return this.relayChat(code, memberId, opts, (state) => {
-      const cleaned = sanitizeChatText(rawText);
-      if (cleaned === null) return fail("BAD_REQUEST", `Messages must be 1–${MAX_CHAT_LENGTH} characters.`);
-      // Links are blocked at every filter level, uncensored included (spam and scam sites).
-      if (containsLink(cleaned)) return fail("CHAT_LINK", "Links can't be shared in chat.");
-      // Safe Mode is always strict; in Normal Mode the host picks strict, standard or uncensored.
-      return ok({ text: filterChatText(cleaned, effectiveChatFilter(state.settings)) });
-    });
+    return this.relayChat(code, memberId, opts, (state) => typedText(state, rawText));
   }
 
   /** A quick reaction, routed exactly like typed text. */
@@ -742,36 +802,55 @@ export class RoomService implements BotPort {
     build: (state: GameState) => ServiceResult<{ text: string; reaction?: ChatReaction }>,
   ): Promise<ServiceResult<null>> {
     return this.withRoom(code, async (room) => {
-      const { state } = room;
-      const sender = findMember(state, memberId);
-      if (!sender) return fail("NOT_IN_ROOM", "You are not in this room.");
-      // A bot only speaks for a seat a bot plays; a person never speaks through a bot seat.
-      if (opts.bot === true && !isBotSeat(state, memberId)) return fail("NOT_IN_ROOM", "That seat isn't played by a bot.");
-      const channel = chatChannelFor(state, memberId);
-      if (channel === null) return fail("CHAT_NOT_ALLOWED", "You can't send messages right now.");
-      const content = build(state);
-      if (!content.ok) return content;
-
-      const message: ChatMessage = {
-        // Random ids: a shared counter would reveal how much hidden-channel chat happened.
-        id: randomUUID(),
-        channel,
-        senderId: sender.id,
-        senderName: sender.name,
-        text: content.value.text,
-        ...(content.value.reaction ? { reaction: content.value.reaction } : {}),
-        sentAt: this.clock(),
-      };
-      room.chat.push(message);
-      if (room.chat.length > MAX_CHAT_HISTORY) room.chat.splice(0, room.chat.length - MAX_CHAT_HISTORY);
-      if (!opts.bot) room.lastActivityAt = message.sentAt;
-      await this.store.save(room);
-
-      for (const id of memberIds(state)) {
-        if (canRead(state, id, channel)) this.sendChatTo(room, id, message);
-      }
-      return ok(null);
+      const posted = await this.relayIn(room, memberId, opts, build);
+      return posted.ok ? ok(null) : posted;
     });
+  }
+
+  /** A bot's message, once it has been "typed": the same chat rules as anyone's. */
+  private async postBotLine(room: Room, botId: string, text: string): Promise<ChatMessage | null> {
+    const posted = await this.relayIn(room, botId, { bot: true }, (state) => typedText(state, text));
+    return posted.ok ? posted.value : null;
+  }
+
+  /** Posts a message in a room already locked: checks, stores, delivers to everyone who may read it. */
+  private async relayIn(
+    room: Room,
+    memberId: string,
+    opts: { bot?: boolean },
+    build: (state: GameState) => ServiceResult<{ text: string; reaction?: ChatReaction }>,
+  ): Promise<ServiceResult<ChatMessage>> {
+    const { state } = room;
+    const sender = findMember(state, memberId);
+    if (!sender) return fail("NOT_IN_ROOM", "You are not in this room.");
+    // A bot only speaks for a seat a bot plays; a person never speaks through a bot seat.
+    if (opts.bot === true && !isBotSeat(state, memberId)) return fail("NOT_IN_ROOM", "That seat isn't played by a bot.");
+    const channel = chatChannelFor(state, memberId);
+    if (channel === null) return fail("CHAT_NOT_ALLOWED", "You can't send messages right now.");
+    const content = build(state);
+    if (!content.ok) return content;
+
+    const message: ChatMessage = {
+      // Random ids: a shared counter would reveal how much hidden-channel chat happened.
+      id: randomUUID(),
+      channel,
+      senderId: sender.id,
+      senderName: sender.name,
+      text: content.value.text,
+      ...(content.value.reaction ? { reaction: content.value.reaction } : {}),
+      sentAt: this.clock(),
+    };
+    room.chat.push(message);
+    if (room.chat.length > MAX_CHAT_HISTORY) room.chat.splice(0, room.chat.length - MAX_CHAT_HISTORY);
+    if (!opts.bot) room.lastActivityAt = message.sentAt;
+    await this.store.save(room);
+
+    for (const id of memberIds(state)) {
+      if (canRead(state, id, channel)) this.sendChatTo(room, id, message);
+    }
+    // People's public words: the bots read them (with the host's AI, or the keyword reader).
+    if (!opts.bot) this.talk.onHumanMessage(room, message);
+    return ok(message);
   }
 
   /** Sends one member their current view and the chat history they're allowed to see. */
@@ -801,6 +880,29 @@ export class RoomService implements BotPort {
       const narration = room.state.narration;
       if (!narration || narration.status !== "pending" || narration.id !== requestId) return ok(null);
       await this.finishNarration(room, text, text === null ? "ai_failed" : undefined);
+      return ok(null);
+    });
+  }
+
+  /** The host's browser wrote the bot messages it was asked for (or null). The server checks every one. */
+  submitBotSpeech(
+    code: string,
+    memberId: string,
+    requestId: string,
+    messages: Array<{ id: string; text: string }> | null,
+  ): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (room.state.hostId !== memberId) return fail("NOT_HOST", "Only the host's browser writes for the bots.");
+      await this.talk.submitSpeech(room, requestId, messages);
+      return ok(null);
+    });
+  }
+
+  /** The host's browser read the chat for the bots (or null). The server checks every name and field. */
+  submitBotListen(code: string, memberId: string, requestId: string, events: unknown[] | null): Promise<ServiceResult<null>> {
+    return this.withRoom(code, async (room) => {
+      if (room.state.hostId !== memberId) return fail("NOT_HOST", "Only the host's browser reads for the bots.");
+      this.talk.submitListen(room, requestId, events);
       return ok(null);
     });
   }
@@ -896,9 +998,12 @@ export class RoomService implements BotPort {
         const botPayloads = botSeatIds(room.state).map((id) => [id, this.prepareDelivery(room, id, now, true)] as const);
         await this.store.save(room);
         for (const [id, payload] of botPayloads) {
+          this.attachBot(room, id);
           if (payload) this.botSink?.state(code, id, payload);
           this.botSink?.chatHistory(code, id, { messages: room.chat.filter((m) => canSeeInHistory(room.state, id, m)) });
         }
+        // What was said in public this game, read again for the bots.
+        if (botPayloads.length > 0) this.talk.rehear(room);
         this.scheduleTimer(room);
         this.scheduler.set(`${code}:recovery`, now + this.recoveryGraceMs, () => {
           void this.endRecoveryGrace(code, now).catch((err: unknown) =>
@@ -990,6 +1095,7 @@ export class RoomService implements BotPort {
       if (state.phase === "ROLE_REVEAL" || state.phase === "LOBBY") {
         room.chat = room.chat.filter((m) => m.channel === "public");
       }
+      if (state.phase === "ROLE_REVEAL") room.gameStartedAt = now;
       this.logPhaseChange(room, prev);
     }
 
@@ -1033,9 +1139,13 @@ export class RoomService implements BotPort {
       this.broadcaster.removed(room.code, id, { reason: "kicked", message: REMOVED_MESSAGES.kicked });
     }
     this.deliverAvatars(room);
+    for (const id of newBotSeats) this.attachBot(room, id);
     for (const [id, payload] of outgoing) this.sendState(room, id, payload);
     for (const id of newBotSeats) this.sendHistory(room, id);
     this.sendNotices(room, prev, gone, newlyKicked, reason);
+    // Bot talk follows the game: lines that can't be said now are dropped, and without the AI they use ready-made lines.
+    this.talk.syncPhase(room);
+    this.talk.aiGone(room);
 
     // A result was just announced: ask the host's browser for the narration (or settle for a ready-made line).
     await this.requestNarration(room);
@@ -1159,6 +1269,7 @@ export class RoomService implements BotPort {
 
   private forgetMember(room: Room, id: string): void {
     this.avatars.remove(room.code, id);
+    delete room.botProfiles[id];
     for (const [hash, owner] of Object.entries(room.sessions)) if (owner === id) delete room.sessions[hash];
     delete room.disconnectedAt[id];
     delete room.reconnecting[id];
@@ -1263,6 +1374,7 @@ export class RoomService implements BotPort {
   private async close(room: Room, reason: "empty" | "idle", alsoNotify: string[] = []): Promise<void> {
     this.scheduler.clear(room.code);
     this.narrationAsked.delete(room.code);
+    this.talk.dropRoom(room.code);
     this.avatars.removeRoom(room.code);
     for (const id of botSeatIds(room.state)) this.botSink?.release(room.code, id);
     if (room.ownerKey) {

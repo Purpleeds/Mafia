@@ -144,21 +144,20 @@ export interface WriteNarrationOptions {
 }
 
 /**
- * Asks Puter's AI to write the narration for these public facts. Returns null if
- * it can't: Puter missing, nobody signed in (no popup is ever opened from here),
+ * Sends messages to Puter's AI and returns the text it answered, or null if it
+ * can't: Puter missing, nobody signed in (no popup is ever opened from here),
  * an error, an empty answer, or no answer within the time limit. Never throws.
  */
-export async function writeNarration(facts: NarrationFacts, options: WriteNarrationOptions = {}): Promise<string | null> {
+export async function askPuter(messages: NarratorMessage[], options: { puter?: PuterApi | null; timeoutMs: number }): Promise<string | null> {
   const puter = options.puter === undefined ? getPuter() : options.puter;
-  const timeoutMs = options.timeoutMs ?? NARRATION_CLIENT_TIMEOUT_MS;
   if (!puter || !isPuterSignedIn(puter)) return null;
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), timeoutMs);
+    timer = setTimeout(() => resolve(null), options.timeoutMs);
   });
   try {
-    const answer = Promise.resolve(puter.ai.chat(buildNarratorMessages(facts))).then(extractChatText, () => null);
+    const answer = Promise.resolve(puter.ai.chat(messages)).then(extractChatText, () => null);
     const text = await Promise.race([answer, timeout]);
     const trimmed = text?.trim() ?? "";
     return trimmed.length > 0 ? trimmed : null;
@@ -167,4 +166,9 @@ export async function writeNarration(facts: NarrationFacts, options: WriteNarrat
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Asks Puter's AI to write the narration for these public facts (null if it can't). */
+export async function writeNarration(facts: NarrationFacts, options: WriteNarrationOptions = {}): Promise<string | null> {
+  return askPuter(buildNarratorMessages(facts), { puter: options.puter, timeoutMs: options.timeoutMs ?? NARRATION_CLIENT_TIMEOUT_MS });
 }

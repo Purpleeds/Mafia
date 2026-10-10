@@ -31,12 +31,12 @@ function escapeRegExp(text: string): string {
 }
 
 /** A name as a whole word: not part of a longer word ("Sam" is not in "Samuel"). */
-function nameRegExp(name: string, flags: string): RegExp {
+export function nameRegExp(name: string, flags: string): RegExp {
   return new RegExp(`(?<!${LETTER_OR_DIGIT})${escapeRegExp(name)}(?!${LETTER_OR_DIGIT})`, flags);
 }
 
 /** Replaces every whole-word occurrence of the names (longest first) so they aren't judged as ordinary words. */
-function maskNames(text: string, names: readonly string[], mask: string): string {
+export function maskNames(text: string, names: readonly string[], mask: string): string {
   let out = text;
   for (const name of [...names].sort((a, b) => b.length - a.length)) {
     if (name.trim() === "") continue;
@@ -58,7 +58,7 @@ export function tidyNarration(raw: string): string {
   return text;
 }
 
-const MARKUP = /<[^>]*>|```|https?:\/\/|www\.|\]\(|^#{1,6}\s|\*\*|__/m;
+export const MARKUP = /<[^>]*>|```|https?:\/\/|www\.|\]\(|^#{1,6}\s|\*\*|__/m;
 
 /** Roles the narrator must never mention: it knows nothing about them, and naming one hints at who holds it. */
 const HIDDEN_ROLE_WORDS = /(?<![a-z0-9])(?:detectives?|investigators?|bodyguards?|cupid|jesters?|villagers?)(?![a-z0-9])/i;

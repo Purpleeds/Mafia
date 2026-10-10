@@ -1,5 +1,8 @@
 import type {
   AvatarImagesPayload,
+  BotListenRequestPayload,
+  BotSpeechRequestPayload,
+  ChatTypingPayload,
   ChatHistoryPayload,
   ChatMessage,
   GameStatePayload,
@@ -20,7 +23,10 @@ export type Sent =
   | { kind: "removed"; room: string; player: string; payload: RemovedPayload }
   | { kind: "narration"; room: string; player: string; payload: NarratorRequestPayload }
   | { kind: "avatars"; room: string; player: string; payload: AvatarImagesPayload }
-  | { kind: "notice"; room: string; player: string; payload: RoomNoticePayload };
+  | { kind: "notice"; room: string; player: string; payload: RoomNoticePayload }
+  | { kind: "speechRequest"; room: string; player: string; payload: BotSpeechRequestPayload }
+  | { kind: "listenRequest"; room: string; player: string; payload: BotListenRequestPayload }
+  | { kind: "typing"; room: string; player: string; payload: ChatTypingPayload };
 
 export class FakeBroadcaster implements Broadcaster {
   sent: Sent[] = [];
@@ -44,6 +50,22 @@ export class FakeBroadcaster implements Broadcaster {
   }
   notice(room: string, player: string, payload: RoomNoticePayload) {
     this.sent.push({ kind: "notice", room, player, payload });
+  }
+  botSpeechRequest(room: string, player: string, payload: BotSpeechRequestPayload) {
+    this.sent.push({ kind: "speechRequest", room, player, payload });
+  }
+  botListenRequest(room: string, player: string, payload: BotListenRequestPayload) {
+    this.sent.push({ kind: "listenRequest", room, player, payload });
+  }
+  typing(room: string, player: string, payload: ChatTypingPayload) {
+    this.sent.push({ kind: "typing", room, player, payload });
+  }
+  /** Every request for the host's AI (bots writing and reading), and who it went to. */
+  aiRequests(): Array<Extract<Sent, { kind: "speechRequest" | "listenRequest" | "narration" }>> {
+    return this.sent.filter(
+      (s): s is Extract<Sent, { kind: "speechRequest" | "listenRequest" | "narration" }> =>
+        s.kind === "speechRequest" || s.kind === "listenRequest" || s.kind === "narration",
+    );
   }
   /** Ids of every avatar picture sent to this member. */
   imagesTo(player: string): string[] {

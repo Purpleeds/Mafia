@@ -19,6 +19,8 @@ interface ChatViewProps {
   avatarOf: (senderId: string) => AvatarView | null;
   /** Bots get a "Bot" label next to their name. */
   isBot?: (senderId: string) => boolean;
+  /** Who is typing in this channel right now ("Mia is typing…"). */
+  typingNames?: readonly string[];
   placeholder: string;
   /** Shown instead of the input when reading only. */
   readOnlyNote?: string;
@@ -26,6 +28,13 @@ interface ChatViewProps {
   label: string;
   /** The host chose uncensored chat: say so above the messages. */
   uncensored?: boolean;
+}
+
+/** "Mia is typing…", "Mia and Sam are typing…", "Several people are typing…". */
+export function typingText(names: readonly string[]): string {
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return "Several people are typing…";
 }
 
 /** A message list and input. Used for the day chat, the graveyard and the Mafia whisper. */
@@ -37,6 +46,7 @@ export function ChatView({
   onReact,
   avatarOf,
   isBot,
+  typingNames = [],
   placeholder,
   readOnlyNote,
   emptyText,
@@ -139,6 +149,7 @@ export function ChatView({
           );
         })}
       </ul>
+      {typingNames.length > 0 ? <p className="chat-typing">{typingText(typingNames)}</p> : null}
       {hiddenCount > 0 ? (
         <MutedSummary count={hiddenCount} roomCode={roomCode} ids={muted} messages={messages} />
       ) : null}

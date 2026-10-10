@@ -72,12 +72,13 @@ export function mergeSettings(current: GameSettings, patch: unknown): SettingsRe
         next.aiNarrator = value;
         break;
       case "botDifficulty":
-        if (!isOneOf(BOT_DIFFICULTIES, value)) return bad("Bot difficulty must be easy or normal.");
+        if (!isOneOf(BOT_DIFFICULTIES, value)) return bad("Bot difficulty must be easy, normal or hard.");
         next.botDifficulty = value;
         break;
       case "soloPractice":
       case "replaceBots":
       case "botTakeover":
+      case "aiBotChat":
         if (typeof value !== "boolean") return bad(`${key} must be true or false.`);
         next[key] = value;
         break;

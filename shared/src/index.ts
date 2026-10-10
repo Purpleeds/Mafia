@@ -6,3 +6,4 @@ export * from "./narration.js";
 export * from "./wordlists.js";
 export * from "./presets.js";
 export * from "./emoji.js";
+export * from "./talk.js";
